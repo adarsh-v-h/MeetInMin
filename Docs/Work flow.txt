@@ -1,0 +1,90 @@
+Day 1-2: Architecture + spike
+Understand APIs
+Lock meeting strategy
+Lock Gmail strategy
+Lock LLM/transcription strategy
+Create architecture
+Create DB model
+Create repository
+
+We need to prove meeting ingestion works.
+
+Day 3-4: Backend Foundation
+Understand APIs
+Lock meeting strategy
+Lock Gmail strategy
+Lock LLM/transcription strategy
+Create architecture
+Create DB model
+Create repository
+
+Day 5-6: Meeting Intelligence
+Transcript ingestion
+Transcript processing
+Structured extraction
+Meeting summary
+Action items
+Decisions
+Deadlines
+
+So by day 6, we should be able to get a meeting report with Transcript given
+
+Day 7-8: Gmail
+OAuth
+Token handling
+Mailbox connection
+Email retrieval
+Email search
+Email normalization
+
+By day 8, we will be able to get Candidate emails from the gmail
+
+Day 9-10: correlation engine 
+meeting
+   +
+emails
+   ↓
+correlation
+   ↓
+suggestions
+
+We will build Relavnce. Reason, Suggested action..
+
+Day 11-12: Frontend + UX
+Login
+ ↓
+Dashboard
+ ↓
+Meeting
+ ↓
+Report
+ ↓
+Suggestions
+ ↓
+Review
+
+Day 13: Hardening
+Tests
+Error handling
+Security review
+Logging review
+Prompt evaluation
+Edge cases
+Docker
+Deployment
+
+By Day 14: Demo + documentation
+This is not SOMETHING we need to make at day 14 itself, but by day 14 we must have these
+README
+Architecture diagram
+API documentation
+Setup instructions
+Security notes
+Licensing notes
+Known limitations
+Demo dataset
+Demo script
+5–8 slide presentation
+
+And a recorded a backup demo
+

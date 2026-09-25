@@ -1,0 +1,68 @@
+
+MUST HAVE:
+- Meeting
+One meeting ingestion mechanism
+Transcript acquisition
+Meeting processing
+Structured meeting summary
+Decisions
+Action items
+Deadlines
+Participants if available
+
+- Email
+Gmail OAuth
+Read-only access
+Email retrieval
+Candidate email search
+Email metadata/content extraction
+
+- Intelligence
+Meeting → action extraction
+Meeting → email correlation
+Suggested actions
+Explanation for each suggestion
+Optional draft reply
+
+- Product
+Authentication
+Dashboard
+Meeting report
+Suggestions page
+Review/dismiss suggestion
+
+- Engineering
+PostgreSQL
+Async processing
+API documentation
+Error handling
+Tests
+Docker
+README
+Architecture diagram
+
+SHOULD HAVE:
+If the core system is working early:
+Background job processing
+Transcript upload fallback
+Better email ranking
+Semantic similarity
+Confidence scores
+Meeting search
+Action-item filtering
+Basic audit trail
+Data deletion
+
+SOMETHING OUR MVP DOESN'T NEED
+If the core system is working early:
+
+Background job processing
+Transcript upload fallback
+Better email ranking
+Semantic similarity
+Confidence scores
+Meeting search
+Action-item filtering
+Basic audit trail
+Data deletion
+
