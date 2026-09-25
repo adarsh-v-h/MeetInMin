@@ -4,6 +4,8 @@ pydantic
 pydantic-settings
 sqlalchemy
 psycopg2-binary
-passlib[bcrypt]
+argon2-cffi
 python-jose[cryptography]
 python-multipart
+httpx
+aiofiles
