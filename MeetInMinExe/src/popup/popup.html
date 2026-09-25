@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TabAudio Forge</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="app">
+      <header class="header">
+        <h1 data-i18n="extensionName">TabAudio Forge</h1>
+        <p data-i18n="subtitle">Record current tab audio</p>
+      </header>
+
+      <section class="status-card" aria-live="polite">
+        <div class="status-row">
+          <span class="label" data-i18n="labelStatus">Status</span>
+          <strong id="statusText" data-i18n="statusIdle">Idle</strong>
+        </div>
+        <div class="status-row">
+          <span class="label" data-i18n="labelDuration">Duration</span>
+          <span id="durationText">00:00:00</span>
+        </div>
+        <div class="status-row">
+          <span class="label" data-i18n="labelFormat">Format</span>
+          <span id="formatText" data-i18n="formatOpusWebm">Opus (webm)</span>
+        </div>
+        <div class="status-row">
+          <span class="label" data-i18n="labelSize">Size</span>
+          <span id="sizeText">0 B</span>
+        </div>
+      </section>
+
+      <div id="micOptionContainer" style="margin-bottom: 12px; margin-top: 12px; display: flex; align-items: center; justify-content: center;">
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer;">
+          <input type="checkbox" id="micCheckbox" />
+          <span data-i18n="labelIncludeMic">Include Microphone</span>
+        </label>
+      </div>
+
+      <section class="controls" aria-label="Recording controls" data-i18n-aria-label="controlsLabel">
+        <button id="startButton" class="control-button control-button--start" type="button" data-i18n="buttonStart">Start</button>
+        <button id="pauseButton" class="control-button control-button--pause" type="button" data-i18n="buttonPause" hidden>Pause</button>
+        <button id="resumeButton" class="control-button control-button--resume" type="button" data-i18n="buttonResume" hidden>Resume</button>
+        <button id="stopButton" class="control-button control-button--stop" type="button" data-i18n="buttonStop" hidden>Stop</button>
+      </section>
+
+      <p id="messageText" class="message" role="status"></p>
+    </main>
+
+    <script src="../utils/i18n.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

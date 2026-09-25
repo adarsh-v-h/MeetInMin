@@ -1,0 +1,173 @@
+:root {
+  color-scheme: light dark;
+  --background: #f7f7f8;
+  --foreground: #111318;
+  --muted: #646b78;
+  --panel: #ffffff;
+  --border: #d9dde5;
+  --button: #111318;
+  --button-text: #ffffff;
+  --button-disabled: #d5d9e1;
+  --button-disabled-text: #777f8d;
+  --danger: #b42318;
+  --recording-background: #b42318;
+  --recording-foreground: #fff7f5;
+  --recording-panel: #fff7f5;
+  --recording-border: #ffb4a8;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #111318;
+    --foreground: #f4f6fb;
+    --muted: #a8b0bd;
+    --panel: #1a1d24;
+    --border: #303642;
+    --button: #f4f6fb;
+    --button-text: #111318;
+    --button-disabled: #2a303b;
+    --button-disabled-text: #7f8794;
+    --danger: #ffb4a8;
+    --recording-background: #5f150f;
+    --recording-foreground: #fff7f5;
+    --recording-panel: #2a1514;
+    --recording-border: #9f3328;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 300px;
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+body[data-state="recording"] {
+  background: var(--recording-background);
+  color: var(--recording-foreground);
+}
+
+.app {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+body[data-state="recording"] .header p,
+body[data-state="recording"] .label {
+  color: rgba(255, 247, 245, 0.76);
+}
+
+.status-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+body[data-state="recording"] .status-card {
+  background: var(--recording-panel);
+  border-color: var(--recording-border);
+  color: var(--foreground);
+}
+
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 13px;
+}
+
+.label {
+  color: var(--muted);
+}
+
+.controls {
+  display: grid;
+  gap: 8px;
+}
+
+body[data-state="recording"] .controls,
+body[data-state="paused"] .controls {
+  grid-template-columns: 1fr 1fr;
+}
+
+.control-button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--button);
+  color: var(--button-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 120ms ease, opacity 120ms ease, background 120ms ease;
+}
+
+.control-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.control-button:disabled {
+  background: var(--button-disabled);
+  color: var(--button-disabled-text);
+  cursor: not-allowed;
+}
+
+.control-button--start,
+.control-button--resume {
+  min-height: 44px;
+  border-radius: 999px;
+}
+
+.control-button--pause {
+  border-radius: 12px;
+  background: #f59e0b;
+  color: #111318;
+}
+
+.control-button--stop {
+  border-radius: 8px;
+  background: #d92d20;
+  color: #ffffff;
+}
+
+body[data-state="recording"] .control-button--pause {
+  background: #fff0b3;
+}
+
+body[data-state="recording"] .control-button--stop {
+  background: #ffffff;
+  color: #b42318;
+}
+
+.message {
+  min-height: 18px;
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+body[data-state="recording"] .message {
+  color: #fff7f5;
+}

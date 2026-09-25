@@ -1,0 +1,128 @@
+{
+  "extensionName": {
+    "message": "TabAudio Forge"
+  },
+  "extensionDescription": {
+    "message": "Record audio from the active browser tab and save it locally."
+  },
+  "subtitle": {
+    "message": "Record current tab audio"
+  },
+  "labelStatus": {
+    "message": "Status"
+  },
+  "labelDuration": {
+    "message": "Duration"
+  },
+  "labelFormat": {
+    "message": "Format"
+  },
+  "labelSize": {
+    "message": "Size"
+  },
+  "controlsLabel": {
+    "message": "Recording controls"
+  },
+  "buttonStart": {
+    "message": "Start"
+  },
+  "buttonPause": {
+    "message": "Pause"
+  },
+  "buttonResume": {
+    "message": "Resume"
+  },
+  "buttonStop": {
+    "message": "Stop"
+  },
+  "statusIdle": {
+    "message": "Idle"
+  },
+  "statusPreparing": {
+    "message": "Capturing tab..."
+  },
+  "statusRecording": {
+    "message": "Recording $DURATION$",
+    "placeholders": {
+      "duration": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusPaused": {
+    "message": "Paused"
+  },
+  "statusSaving": {
+    "message": "Saving..."
+  },
+  "statusCompleted": {
+    "message": "Done"
+  },
+  "statusError": {
+    "message": "Error"
+  },
+  "formatOpusWebm": {
+    "message": "Opus (webm)"
+  },
+  "formatWebm": {
+    "message": "WebM"
+  },
+  "errorCommandFailed": {
+    "message": "Command failed."
+  },
+  "errorUnknown": {
+    "message": "Unknown error."
+  },
+  "errorRecordingAlreadyRunning": {
+    "message": "A recording is already running."
+  },
+  "errorNoActiveTab": {
+    "message": "No active tab found."
+  },
+  "errorRestrictedPage": {
+    "message": "This browser page cannot be captured."
+  },
+  "errorDownloadInterrupted": {
+    "message": "Download was interrupted."
+  },
+  "errorRecordingStateLost": {
+    "message": "Recording state was lost after the background worker restarted."
+  },
+  "errorRecordingFailed": {
+    "message": "Recording failed."
+  },
+  "errorRecordingNoFile": {
+    "message": "Recording finished without a downloadable file."
+  },
+  "errorUnsupportedMime": {
+    "message": "MediaRecorder does not support audio/webm recording in this browser."
+  },
+  "errorOffscreenUnexpected": {
+    "message": "Unexpected offscreen error."
+  },
+  "errorMediaRecorderFailed": {
+    "message": "MediaRecorder failed."
+  },
+  "errorUnknownMessageType": {
+    "message": "Unknown message type: $TYPE$",
+    "placeholders": {
+      "type": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorUnknownOffscreenMessageType": {
+    "message": "Unknown offscreen message type: $TYPE$",
+    "placeholders": {
+      "type": {
+        "content": "$1"
+      }
+    }
+  },
+  "labelIncludeMic": {
+    "message": "Include Microphone"
+  },
+  "errorMicPermission": {
+    "message": "Microphone access denied."
+  }
+}

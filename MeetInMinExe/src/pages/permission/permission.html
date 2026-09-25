@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title data-i18n="permissionTitle">Microphone Permission</title>
+    <link rel="stylesheet" href="../../popup/popup.css">
+    <style>
+      .container { max-width: 500px; margin: 40px auto; padding: 20px; text-align: center; }
+      .grant-btn { font-size: 16px; padding: 12px 24px; cursor: pointer; background: var(--bg-highlight); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 6px; }
+      .grant-btn:hover { background: var(--border-color); }
+    </style>
+  </head>
+  <body>
+    <main class="app container">
+      <header class="header">
+        <h1 data-i18n="permissionTitle">Microphone Permission Required</h1>
+      </header>
+      <section class="status-card">
+        <p data-i18n="permissionText" style="margin-bottom: 20px;">To record your microphone, TabAudio Forge needs your permission. Please click the button below and select 'Allow' in the browser prompt.</p>
+        <button id="requestBtn" class="grant-btn" data-i18n="permissionButton">Grant Microphone Permission</button>
+        <p id="msgText" style="margin-top: 20px; font-weight: bold;"></p>
+      </section>
+    </main>
+    <script src="../../utils/i18n.js"></script>
+    <script src="permission.js"></script>
+  </body>
+</html>
