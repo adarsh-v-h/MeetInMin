@@ -3,12 +3,96 @@ from app.api.deps import DbSession
 from app.db.models import User, APIKey
 from sqlalchemy import select
 import hashlib
-import shutil
+# import shutil
 import os
 import uuid
 import time
+# import asyncio
 
 router = APIRouter()
+
+import logging
+from app.db.database import SessionLocal
+from app.db.models import Meeting, Transcript, MeetingInsight, ActionItem, KeyDecision
+
+logger = logging.getLogger(__name__)
+
+async def process_audio_background(meeting_id: str, file_path: str):
+    from app.services.stt import transcribe_audio
+    from app.services.llm import generate_meeting_insights
+    
+    # We create a new dedicated DB session for the background task
+    db = SessionLocal()
+    try:
+        meeting = db.query(Meeting).filter(Meeting.id == meeting_id).first()
+        if not meeting:
+            logger.error(f"Meeting {meeting_id} not found.")
+            return
+            
+        logger.info(f"✅ Starting STT for meeting {meeting_id}")
+        meeting.status = "transcribing"
+        db.commit()
+        
+        # 1. Transcribe the audio
+        transcript_text = await transcribe_audio(file_path)
+        
+        if not transcript_text:
+            meeting.status = "failed"
+            db.commit()
+            return
+            
+        # Save transcript to DB
+        new_transcript = Transcript(meeting_id=meeting.id, raw_text=transcript_text)
+        db.add(new_transcript)
+        
+        logger.info(f"✅ Transcript saved. Generating insights...")
+        meeting.status = "analyzing"
+        db.commit()
+        
+        # 2. Get LLM Insights
+        insights = await generate_meeting_insights(transcript_text)
+        
+        if not insights:
+            meeting.status = "failed"
+            db.commit()
+            return
+            
+        # Save Insights to DB
+        new_insight = MeetingInsight(
+            meeting_id=meeting.id,
+            summary=insights.summary
+        )
+        db.add(new_insight)
+        db.flush() # flush to get new_insight.id
+        
+        # Save Key Decisions
+        for decision in insights.key_decisions:
+            db.add(KeyDecision(insight_id=new_insight.id, decision_text=decision))
+            
+        # Save Action Items
+        for item in insights.action_items:
+            db.add(ActionItem(
+                insight_id=new_insight.id,
+                task=item.task,
+                assignee=item.assignee
+            ))
+            
+        meeting.status = "completed"
+        db.commit()
+        logger.info(f"✨ Successfully analyzed and saved meeting {meeting_id}!")
+        
+    except Exception as e:
+        logger.error(f"Background task failed: {e}")
+        db.rollback()
+        
+        # Try to mark as failed
+        meeting = db.query(Meeting).filter(Meeting.id == meeting_id).first()
+        if meeting:
+            meeting.status = "failed"
+            db.commit()
+            
+    finally:
+        db.close()
 
 # Directory to temporarily store uploaded audio files before they are processed
 UPLOAD_DIR = "uploaded_audio"
@@ -33,7 +117,7 @@ async def upload_meeting_audio(
         
     user = api_key_record.user
 
-    # 2. Generate a secure, unique filename as requested: username_uniqueId_timestamp.webm
+    # 2. Generate a secure, unique filename: username_uniqueId_timestamp.webm
     timestamp = int(time.time())
     file_extension = file.filename.split(".")[-1] if "." in file.filename else "webm"
     unique_filename = f"{user.username}_{str(uuid.uuid4())[:8]}_{timestamp}.{file_extension}"
@@ -46,8 +130,19 @@ async def upload_meeting_audio(
         while content := await file.read(1024 * 1024):  # 1MB chunk size
             await out_file.write(content)
         
-    # TODO: Create a Database row for this Meeting (e.g., status="processing")
-    # TODO: Add the Whisper Transcription function to `background_tasks` so it runs asynchronously
+    # Create the Meeting record in the DB first
+    new_meeting = Meeting(
+        user_id=user.id,
+        title=f"Meeting on {time.strftime('%b %d, %Y')}",
+        audio_file_path=file_path,
+        status="uploading"
+    )
+    db.add(new_meeting)
+    db.commit()
+    db.refresh(new_meeting)
+    
+    # Trigger the Zoho Catalyst STT and LLM Analysis in the background
+    background_tasks.add_task(process_audio_background, new_meeting.id, file_path)
     
     return {
         "status": "success", 

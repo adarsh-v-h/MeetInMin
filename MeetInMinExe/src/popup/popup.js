@@ -8,6 +8,10 @@ const elements = {
   pauseButton: document.querySelector("#pauseButton"),
   resumeButton: document.querySelector("#resumeButton"),
   stopButton: document.querySelector("#stopButton"),
+  apiKeySelect: document.querySelector("#apiKeySelect"),
+  newApiKeyNameInput: document.querySelector("#newApiKeyNameInput"),
+  newApiKeyInput: document.querySelector("#newApiKeyInput"),
+  addApiKeyBtn: document.querySelector("#addApiKeyBtn"),
 };
 
 let currentStatus = {
@@ -35,6 +39,30 @@ function init() {
     if (message.status) {
       renderStatus(message.status);
     }
+  });
+
+  
+  loadApiKeys();
+  elements.addApiKeyBtn.addEventListener("click", async () => {
+    const val = elements.newApiKeyInput.value.trim();
+    const nameVal = elements.newApiKeyNameInput.value.trim() || "My Key";
+    if (!val) return;
+    const data = await chrome.storage.local.get(["apiKeys"]);
+    const keys = data.apiKeys || [];
+    
+    // Support migrating old string arrays to object arrays
+    const formattedKeys = keys.map(k => typeof k === "string" ? { name: "Old Key", key: k } : k);
+    
+    if (!formattedKeys.find(k => k.key === val)) {
+      formattedKeys.push({ name: nameVal, key: val });
+      await chrome.storage.local.set({ apiKeys: formattedKeys, activeApiKey: val });
+    }
+    elements.newApiKeyInput.value = "";
+    elements.newApiKeyNameInput.value = "";
+    await loadApiKeys();
+  });
+  elements.apiKeySelect.addEventListener("change", async () => {
+    await chrome.storage.local.set({ activeApiKey: elements.apiKeySelect.value });
   });
 
   sendCommand("GET_STATUS", {}, { silent: true }).catch(() => {});
@@ -212,5 +240,27 @@ function localizeDocument() {
 
   document.querySelectorAll("[data-i18n-aria-label]").forEach((node) => {
     node.setAttribute("aria-label", t(node.dataset.i18nAriaLabel));
+  });
+}
+
+
+async function loadApiKeys() {
+  const data = await chrome.storage.local.get(["apiKeys", "activeApiKey"]);
+  const keys = data.apiKeys || [];
+  const activeKey = data.activeApiKey || "";
+  
+  elements.apiKeySelect.innerHTML = '<option value="">Save locally (Downloads folder)</option>';
+  keys.forEach(k => {
+    // Support old string format
+    const keyString = typeof k === "string" ? k : k.key;
+    const keyName = typeof k === "string" ? "API Key" : k.name;
+    
+    const opt = document.createElement("option");
+    opt.value = keyString;
+    
+    const maskedKey = "************" + keyString.slice(-4);
+    opt.textContent = `${keyName} - ${maskedKey}`;
+    if (keyString === activeKey) opt.selected = true;
+    elements.apiKeySelect.appendChild(opt);
   });
 }

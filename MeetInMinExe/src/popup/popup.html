@@ -39,6 +39,18 @@
         </label>
       </div>
 
+      <div id="apiKeysContainer" style="margin-bottom: 12px; font-size: 12px; display: flex; flex-direction: column; gap: 6px; padding: 0 16px;">
+        <label style="font-weight: 500; color: #fff;">Destination:</label>
+        <select id="apiKeySelect" style="padding: 4px; border-radius: 4px; border: 1px solid #555; width: 100%; color: #fff; background: #222;">
+          <option value="">Save locally (Downloads folder)</option>
+        </select>
+        <div style="display: flex; gap: 4px;">
+          <input type="text" id="newApiKeyNameInput" placeholder="Key Name" style="width: 80px; padding: 4px; border-radius: 4px; border: 1px solid #555; color: #fff; background: #222;" />
+          <input type="text" id="newApiKeyInput" placeholder="Paste API Key..." style="flex: 1; padding: 4px; border-radius: 4px; border: 1px solid #555; color: #fff; background: #222;" />
+          <button type="button" id="addApiKeyBtn" style="padding: 4px 8px; border-radius: 4px; border: 1px solid #555; cursor: pointer; background: #444; color: #fff;">Add</button>
+        </div>
+      </div>
+
       <section class="controls" aria-label="Recording controls" data-i18n-aria-label="controlsLabel">
         <button id="startButton" class="control-button control-button--start" type="button" data-i18n="buttonStart">Start</button>
         <button id="pauseButton" class="control-button control-button--pause" type="button" data-i18n="buttonPause" hidden>Pause</button>

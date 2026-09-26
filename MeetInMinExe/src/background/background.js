@@ -202,12 +202,48 @@ async function handleRecordingComplete(message) {
   broadcast({ type: "STATUS_UPDATE", status });
 
   try {
-    const downloadId = await chrome.downloads.download({
-      url: message.url,
-      filename: status.filename,
-      saveAs: false,
-    });
-    await setSessionFields({ activeDownloadId: downloadId });
+    const storage = await chrome.storage.local.get("activeApiKey");
+    const apiKey = storage.activeApiKey;
+    let uploaded = false;
+
+    if (apiKey) {
+      try {
+        console.log("Attempting to upload to backend with API Key:", apiKey);
+        const blobResponse = await fetch(message.url);
+        const blob = await blobResponse.blob();
+        
+        const formData = new FormData();
+        formData.append("file", blob, status.filename);
+        
+        const uploadResponse = await fetch(`http://localhost:8000/v1/meetings/upload/${apiKey}`, {
+          method: "POST",
+          body: formData,
+        });
+        
+        if (uploadResponse.ok) {
+          console.log("Upload successful!");
+          uploaded = true;
+        } else {
+          console.error("Backend upload failed:", uploadResponse.status);
+        }
+      } catch (uploadError) {
+        console.error("Upload error:", uploadError);
+      }
+    }
+
+    if (!uploaded) {
+      console.log("Fallback to local download.");
+      const downloadId = await chrome.downloads.download({
+        url: message.url,
+        filename: status.filename,
+        saveAs: false,
+      });
+      await setSessionFields({ activeDownloadId: downloadId });
+    } else {
+       await cleanupAfterDownload();
+       await setStatus({ state: "completed" });
+       broadcast({ type: "STATUS_UPDATE", status });
+    }
   } catch (error) {
     await cleanupAfterDownload();
     throw error;
