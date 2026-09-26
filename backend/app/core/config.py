@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     
     # Gemini AI
     GEMINI_API_KEY: str
+
+    # Database
+    DATABASE_URL: str
     
     class Config:
         env_file = ".env"

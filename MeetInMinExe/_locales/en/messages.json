@@ -1,12 +1,12 @@
 {
   "extensionName": {
-    "message": "TabAudio Forge"
+    "message": "MeetInMin Extension"
   },
   "extensionDescription": {
-    "message": "Record audio from the active browser tab and save it locally."
+    "message": "Silently record any meeting audio from your browser tab and instantly generate AI Meeting Minutes."
   },
   "subtitle": {
-    "message": "Record current tab audio"
+    "message": "Capture your meetings."
   },
   "labelStatus": {
     "message": "Status"

@@ -1,5 +1,6 @@
 import React from 'react';
 import Navbar from '../components/Navbar';
+import { Link } from 'react-router-dom';
 
 function Landing() {
   return (
@@ -15,8 +16,10 @@ function Landing() {
               MeetInMin silently records your browser audio, analyzes the transcript, and automates your follow-ups. No awkward bots joining your calls.
             </p>
             <div className="hero-buttons">
-              <button className="btn-primary" style={{ fontSize: '1.1rem' }}>Install Chrome Extension</button>
-              <button className="btn-secondary" style={{ fontSize: '1.1rem' }}>View Demo</button>
+              <Link to="/register" className="btn-primary" style={{ fontSize: '1.1rem', textDecoration: 'none', display: 'inline-block' }}>Get Started Free</Link>
+              <a href="/MeetInMin-Extension.zip" download="MeetInMin-Extension.zip" className="btn-secondary" style={{ fontSize: '1.1rem', textDecoration: 'none', display: 'inline-block' }}>
+                Download Extension
+              </a>
             </div>
             
             <div className="hero-stats">
