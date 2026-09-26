@@ -4,6 +4,7 @@ from typing import Optional
 import hashlib
 import secrets
 from jose import jwt
+from app.core.config import settings
 from argon2 import PasswordHasher
 
 ph = PasswordHasher()
@@ -15,7 +16,7 @@ def generate_api_key() -> tuple[str, str]:
     return api_key, api_key_hash
 
 # TODO: Move to .env in production
-SECRET_KEY = "super-secret-key-for-development-only-change-in-prod"
+SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days token for MVP convenience
 

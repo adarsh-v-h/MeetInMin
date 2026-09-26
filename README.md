@@ -41,3 +41,5 @@ MeetInMin is engineered to prioritize code quality, security, and simplicity:
 
 ## License
 This project is licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+### Environment Variables
+To run this project locally, copy `backend/.env.example` to `backend/.env` and fill in your API keys for Zoho Catalyst, Google OAuth, and Gemini AI.

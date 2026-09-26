@@ -42,6 +42,8 @@
 * **Gmail API Connection:** Use the user's stored `google_refresh_token` to securely fetch recent emails from their inbox without asking for permission again.
 * **Contextual Correlation:** Pass both the Meeting Minutes *and* the recent Emails to the LLM to generate highly contextual, ready-to-send follow-up actions and draft emails.
 
-### Phase 4: The Web Dashboard (Frontend)
+#- [x] Moved hardcoded secrets (Zoho, Gemini, JWT, Google Auth) to `.env` using Pydantic Settings.
+
+## Phase 4: The Web Dashboard (Frontend)
 * **User Interface:** Scaffold a beautiful, modern React/Vite dashboard where users can actually log in.
 * **Meeting History View:** Build the UI to display past meeting recordings, transcripts, and AI-generated action items.
