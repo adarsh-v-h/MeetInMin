@@ -42,8 +42,15 @@
 * **Gmail API Connection:** Use the user's stored `google_refresh_token` to securely fetch recent emails from their inbox without asking for permission again.
 * **Contextual Correlation:** Pass both the Meeting Minutes *and* the recent Emails to the LLM to generate highly contextual, ready-to-send follow-up actions and draft emails.
 
-#- [x] Moved hardcoded secrets (Zoho, Gemini, JWT, Google Auth) to `.env` using Pydantic Settings.
+### 4. Frontend & Polish
+* **Auth UI:** Built modern, glassmorphism React components for Landing, Login, and Register flows.
+* **API Integration:** Wired the React frontend securely to the FastAPI backend, resolving CORS and handling JWT token storage.
+* **Extension Branding & Distribution:** Rebranded the Chrome extension to "MeetInMin Extension" with matching high-res icons. Zipped and deployed it directly on the Landing page for one-click user downloads.
+* **Environment Configuration:** Securely abstracted all Zoho, Gemini, Google Auth, and JWT secrets out of the codebase into a `.env` pipeline using strict Pydantic Settings.
 
-## Phase 4: The Web Dashboard (Frontend)
-* **User Interface:** Scaffold a beautiful, modern React/Vite dashboard where users can actually log in.
-* **Meeting History View:** Build the UI to display past meeting recordings, transcripts, and AI-generated action items.
+---
+
+## 🗺️ What Is Left To Build
+
+### Phase 4: The Web Dashboard (Frontend)
+* **Meeting History View:** Build the secure React UI to display past meeting recordings, transcripts, and AI-generated action items from the database.
