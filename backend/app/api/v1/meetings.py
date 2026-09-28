@@ -1,7 +1,9 @@
 from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException, status
+from fastapi.responses import FileResponse
 from app.api.deps import DbSession
 from app.db.models import User, APIKey
-from sqlalchemy import select
+from sqlalchemy import select, func
+from sqlalchemy.orm import joinedload
 import hashlib
 # import shutil
 import os
@@ -14,6 +16,8 @@ router = APIRouter()
 import logging
 from app.db.database import SessionLocal
 from app.db.models import Meeting, Transcript, MeetingInsight, ActionItem, KeyDecision
+from app.schemas.meeting import PaginatedMeetings, MeetingDetailResponse
+from app.api.deps import CurrentUser
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +119,14 @@ async def upload_meeting_audio(
             detail="Invalid Extension API Key"
         )
         
+    if api_key_record.status == "REVOKED":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="This API Key has been revoked"
+        )
+        
+    # Update last_used_at
+    api_key_record.last_used_at = func.now()
     user = api_key_record.user
 
     # 2. Generate a secure, unique filename: username_uniqueId_timestamp.webm
@@ -133,6 +145,7 @@ async def upload_meeting_audio(
     # Create the Meeting record in the DB first
     new_meeting = Meeting(
         user_id=user.id,
+        api_key_id=api_key_record.id,
         title=f"Meeting on {time.strftime('%b %d, %Y')}",
         audio_file_path=file_path,
         status="uploading"
@@ -149,3 +162,86 @@ async def upload_meeting_audio(
         "message": f"Audio uploaded successfully by {user.username}",
         "file_name": unique_filename,
     }
+
+@router.get("", response_model=PaginatedMeetings)
+async def list_meetings(
+    current_user: CurrentUser,
+    db: DbSession,
+    page: int = 1,
+    limit: int = 10
+):
+    offset = (page - 1) * limit
+    
+    # Efficiently load meetings and their associated api_key
+    query = select(Meeting).options(
+        joinedload(Meeting.api_key)
+    ).where(Meeting.user_id == current_user.id).order_by(Meeting.created_at.desc())
+    
+    total = db.execute(select(func.count(Meeting.id)).where(Meeting.user_id == current_user.id)).scalar()
+    
+    meetings = db.execute(query.offset(offset).limit(limit)).scalars().all()
+    
+    # Map to schema manually to include api_key_name
+    items = []
+    for m in meetings:
+        items.append({
+            "id": m.id,
+            "title": m.title,
+            "created_at": m.created_at,
+            "status": m.status,
+            "duration": m.duration,
+            "api_key_name": m.api_key.name if m.api_key else None
+        })
+        
+    return PaginatedMeetings(
+        items=items,
+        total=total,
+        page=page,
+        size=limit
+    )
+
+@router.get("/{meeting_id}", response_model=MeetingDetailResponse)
+async def get_meeting_details(meeting_id: str, current_user: CurrentUser, db: DbSession):
+    # Eagerly load transcript, insight, and related nested objects
+    meeting = db.execute(
+        select(Meeting).options(
+            joinedload(Meeting.api_key),
+            joinedload(Meeting.transcript),
+            joinedload(Meeting.insight).joinedload(MeetingInsight.action_items),
+            joinedload(Meeting.insight).joinedload(MeetingInsight.key_decisions)
+        ).where(Meeting.id == meeting_id, Meeting.user_id == current_user.id)
+    ).scalar_one_or_none()
+    
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+        
+    return {
+        "id": meeting.id,
+        "title": meeting.title,
+        "created_at": meeting.created_at,
+        "status": meeting.status,
+        "duration": meeting.duration,
+        "api_key_name": meeting.api_key.name if meeting.api_key else None,
+        "transcript": meeting.transcript,
+        "insight": meeting.insight
+    }
+
+@router.get("/{meeting_id}/audio", response_class=FileResponse)
+async def download_meeting_audio(meeting_id: str, current_user: CurrentUser, db: DbSession):
+    meeting = db.execute(
+        select(Meeting).where(Meeting.id == meeting_id, Meeting.user_id == current_user.id)
+    ).scalar_one_or_none()
+    
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+        
+    if not meeting.audio_file_path or not os.path.exists(meeting.audio_file_path):
+        raise HTTPException(status_code=404, detail="Audio file not found or has been deleted")
+        
+    # Return the file securely
+    return FileResponse(
+        path=meeting.audio_file_path, 
+        filename=os.path.basename(meeting.audio_file_path),
+        media_type="audio/webm"
+    )
+

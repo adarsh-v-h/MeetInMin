@@ -5,8 +5,8 @@ class UserCreate(BaseModel):
     # Note: the ... as the first parameter means that the field has no default value
     # That means the caller MUST provide a value for this field
     username: str = Field(..., min_length=3, max_length=50)
-    password: str = Field(..., min_length=8)
-    confirm_password: str
+    password: str = Field(..., min_length=8, max_length=128)
+    confirm_password: str = Field(..., min_length=8, max_length=128)
 
     @model_validator(mode='after')
     def check_passwords_match(self) -> 'UserCreate':
