@@ -15,6 +15,7 @@ MeetInMin is engineered to prioritize code quality, security, and simplicity:
 
 * **Backend:** Built on FastAPI leveraging async Python for high performance.
 * **Database:** Uses SQLAlchemy 2.0 with strict transactional boundaries. Currently defaults to SQLite for rapid development, but abstracts connection logic for seamless integration with PostgreSQL.
+* **Frontend:** A high-performance React SPA built with Vite. It features a completely custom, stunning glassmorphism design system utilizing React Router Dom for secure nested routing and Lucide-React for clean iconography.
 * **Security:** 
   * Implements Argon2 (via CFFI) in a threadpool for enterprise-grade non-blocking password hashing.
   * Uses JSON Web Tokens (JWT) for stateless session management.
@@ -32,6 +33,19 @@ MeetInMin is engineered to prioritize code quality, security, and simplicity:
    uv run uvicorn app.main:app --reload
    ```
 4. Access the auto-generated Swagger UI documentation at `http://127.0.0.1:8000/docs`.
+
+### Frontend Setup
+1. Open a new terminal instance.
+2. Navigate to the frontend directory:
+   ```bash
+   cd frontend
+   npm install
+   ```
+3. Start the Vite development server:
+   ```bash
+   npm run dev
+   ```
+4. Access the beautiful glassmorphism dashboard at `http://localhost:5173`.
 
 ### Extension Setup
 1. Open Google Chrome and navigate to `chrome://extensions/`.

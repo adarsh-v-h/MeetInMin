@@ -78,22 +78,22 @@ function Register() {
             
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               <div style={inputContainerStyle}>
-                <input type="text" name="username" value={formData.username} onChange={handleChange} required autoComplete="username" placeholder="Username" style={inputStyle} />
+                <input type="text" name="username" value={formData.username} onChange={handleChange} required autoComplete="username" placeholder="Username" maxLength="50" style={inputStyle} />
               </div>
               
               <div style={inputContainerStyle}>
-                <input type="email" name="email" value={formData.email} onChange={handleChange} required autoComplete="email" placeholder="Email Address" style={inputStyle} />
+                <input type="email" name="email" value={formData.email} onChange={handleChange} required autoComplete="email" placeholder="Email Address" maxLength="100" style={inputStyle} />
               </div>
               
               <div style={inputContainerStyle}>
-                <input type={showPassword ? "text" : "password"} name="password" value={formData.password} onChange={handleChange} required autoComplete="new-password" placeholder="Password" style={inputStyle} />
+                <input type={showPassword ? "text" : "password"} name="password" value={formData.password} onChange={handleChange} required autoComplete="new-password" placeholder="Password" maxLength="128" style={inputStyle} />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} style={iconButtonStyle}>
                   <EyeIcon show={showPassword} />
                 </button>
               </div>
 
               <div style={inputContainerStyle}>
-                <input type={showConfirmPassword ? "text" : "password"} name="confirm_password" value={formData.confirm_password} onChange={handleChange} required autoComplete="new-password" placeholder="Confirm Password" style={inputStyle} />
+                <input type={showConfirmPassword ? "text" : "password"} name="confirm_password" value={formData.confirm_password} onChange={handleChange} required autoComplete="new-password" placeholder="Confirm Password" maxLength="128" style={inputStyle} />
                 <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} style={iconButtonStyle}>
                   <EyeIcon show={showConfirmPassword} />
                 </button>

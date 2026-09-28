@@ -42,9 +42,20 @@
 * **Gmail API Connection:** Use the user's stored `google_refresh_token` to securely fetch recent emails from their inbox without asking for permission again.
 * **Contextual Correlation:** Pass both the Meeting Minutes *and* the recent Emails to the LLM to generate highly contextual, ready-to-send follow-up actions and draft emails.
 
-### 4. Frontend & Polish
+### 4. The Web Dashboard (Frontend)
 * **Auth UI:** Built modern, glassmorphism React components for Landing, Login, and Register flows.
-* **API Integration:** Wired the React frontend securely to the FastAPI backend, resolving CORS and handling JWT token storage.
+* **App Architecture:** Created a secure `AppShell` with a persistent collapsible `Sidebar` featuring clean `lucide-react` iconography.
+* **API Keys Management (`/api-keys`):** Full lifecycle management for extension credentials (Creation, display of secrets once, Revocation, active/revoked status tracking).
+* **Meeting Dashboard (`/dashboard`):** 
+  * Fetches and paginates meetings via `GET /v1/meetings`.
+  * Renders sleek `MeetingCard` components with pulsing animated status badges for processing states.
+* **Meeting Details (`/meetings/:id`):** 
+  * Fetches the deeply nested meeting object (Transcript, Action Items, Key Decisions).
+  * Gracefully handles `processing` states with beautiful UI placeholders instead of throwing errors.
+  * Supports secure, authorized audio downloading by piping backend Blob data.
+* **Settings & Integration (`/settings`):** 
+  * Manages the user profile and displays the state of their Google Integration.
+  * Allows users to securely connect or disconnect their Gmail account, instantly nullifying their database OAuth token.
 * **Extension Branding & Distribution:** Rebranded the Chrome extension to "MeetInMin Extension" with matching high-res icons. Zipped and deployed it directly on the Landing page for one-click user downloads.
 * **Environment Configuration:** Securely abstracted all Zoho, Gemini, Google Auth, and JWT secrets out of the codebase into a `.env` pipeline using strict Pydantic Settings.
 
@@ -52,5 +63,6 @@
 
 ## 🗺️ What Is Left To Build
 
-### Phase 4: The Web Dashboard (Frontend)
-* **Meeting History View:** Build the secure React UI to display past meeting recordings, transcripts, and AI-generated action items from the database.
+### Phase 5: Polishing the Extension
+* **Popup UI Update:** Add a text input box in the extension popup for users to paste their generated API Key.
+* **Upload Logic:** Modify the extension's recording script so that when the user clicks "Stop", it takes the `.webm` audio blob and POSTs it directly to our FastAPI upload endpoint (using their API Key).

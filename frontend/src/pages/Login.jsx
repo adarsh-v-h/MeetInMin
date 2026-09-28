@@ -95,11 +95,11 @@ function Login() {
             
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               <div style={inputContainerStyle}>
-                <input type="text" name="identifier" value={formData.identifier} onChange={handleChange} required autoComplete="username" placeholder="Email or Username" style={inputStyle} />
+                <input type="text" name="identifier" value={formData.identifier} onChange={handleChange} required autoComplete="username" placeholder="Email or Username" maxLength="100" style={inputStyle} />
               </div>
               
               <div style={inputContainerStyle}>
-                <input type={showPassword ? "text" : "password"} name="password" value={formData.password} onChange={handleChange} required autoComplete="current-password" placeholder="Password" style={inputStyle} />
+                <input type={showPassword ? "text" : "password"} name="password" value={formData.password} onChange={handleChange} required autoComplete="current-password" placeholder="Password" maxLength="128" style={inputStyle} />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} style={iconButtonStyle}>
                   <EyeIcon show={showPassword} />
                 </button>
