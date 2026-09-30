@@ -9,7 +9,8 @@ import hashlib
 import os
 import uuid
 import time
-# import asyncio
+import asyncio
+from app.services.queue_manager import audio_queue
 
 router = APIRouter()
 
@@ -22,8 +23,7 @@ from app.api.deps import CurrentUser
 logger = logging.getLogger(__name__)
 
 async def process_audio_background(meeting_id: str, file_path: str):
-    from app.services.stt import transcribe_audio
-    from app.services.llm import generate_meeting_insights
+    from app.services.llm import process_meeting_audio
     
     # We create a new dedicated DB session for the background task
     db = SessionLocal()
@@ -33,35 +33,24 @@ async def process_audio_background(meeting_id: str, file_path: str):
             logger.error(f"Meeting {meeting_id} not found.")
             return
             
-        logger.info(f"✅ Starting STT for meeting {meeting_id}")
-        meeting.status = "transcribing"
-        db.commit()
-        
-        # 1. Transcribe the audio
-        transcript_text = await transcribe_audio(file_path)
-        
-        if not transcript_text:
-            meeting.status = "failed"
-            db.commit()
-            return
-            
-        # Save transcript to DB
-        new_transcript = Transcript(meeting_id=meeting.id, raw_text=transcript_text)
-        db.add(new_transcript)
-        
-        logger.info(f"✅ Transcript saved. Generating insights...")
+        logger.info(f"✅ Starting AI Analysis for meeting {meeting_id}")
         meeting.status = "analyzing"
         db.commit()
         
-        # 2. Get LLM Insights
-        insights = await generate_meeting_insights(transcript_text)
+        # 1. Get LLM Insights directly from audio!
+        insights = await asyncio.to_thread(process_meeting_audio, file_path)
         
         if not insights:
             meeting.status = "failed"
             db.commit()
             return
             
-        # Save Insights to DB
+        # 1.5 Save transcript to DB
+        from app.db.models import Transcript
+        new_transcript = Transcript(meeting_id=meeting.id, raw_text=insights.full_transcript)
+        db.add(new_transcript)
+            
+        # 2. Save Insights to DB
         new_insight = MeetingInsight(
             meeting_id=meeting.id,
             summary=insights.summary
@@ -154,8 +143,8 @@ async def upload_meeting_audio(
     db.commit()
     db.refresh(new_meeting)
     
-    # Trigger the Zoho Catalyst STT and LLM Analysis in the background
-    background_tasks.add_task(process_audio_background, new_meeting.id, file_path)
+    # Queue the Meeting for background sequential processing (prevents Gemini rate limits)
+    audio_queue.put_nowait((new_meeting.id, file_path))
     
     return {
         "status": "success", 
@@ -210,7 +199,7 @@ async def get_meeting_details(meeting_id: str, current_user: CurrentUser, db: Db
             joinedload(Meeting.insight).joinedload(MeetingInsight.action_items),
             joinedload(Meeting.insight).joinedload(MeetingInsight.key_decisions)
         ).where(Meeting.id == meeting_id, Meeting.user_id == current_user.id)
-    ).scalar_one_or_none()
+    ).unique().scalar_one_or_none()
     
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
@@ -244,4 +233,42 @@ async def download_meeting_audio(meeting_id: str, current_user: CurrentUser, db:
         filename=os.path.basename(meeting.audio_file_path),
         media_type="audio/webm"
     )
+
+@router.post("/{meeting_id}/retry")
+async def retry_failed_meeting(
+    meeting_id: str, 
+    current_user: CurrentUser, 
+    db: DbSession,
+    background_tasks: BackgroundTasks
+):
+    """Retries the AI analysis for a failed meeting."""
+    meeting = db.execute(
+        select(Meeting).where(Meeting.id == meeting_id, Meeting.user_id == current_user.id)
+    ).scalar_one_or_none()
+    
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+        
+    if meeting.status not in ["failed", "uploading"]:
+        raise HTTPException(status_code=400, detail=f"Cannot retry a meeting with status {meeting.status}")
+        
+    if not meeting.audio_file_path or not os.path.exists(meeting.audio_file_path):
+        raise HTTPException(status_code=404, detail="Original audio file is missing from the server.")
+        
+    # Reset status and trigger background task again!
+    meeting.status = "analyzing"
+    
+    # If there was a partial transcript/insight attached, we might want to delete it, 
+    # but cascade="all, delete-orphan" handles it if we just delete them.
+    if meeting.insight:
+        db.delete(meeting.insight)
+    if meeting.transcript:
+        db.delete(meeting.transcript)
+        
+    db.commit()
+    
+    audio_queue.put_nowait((meeting.id, meeting.audio_file_path))
+    
+    return {"status": "success", "message": "Meeting analysis has been restarted in the background."}
+
 

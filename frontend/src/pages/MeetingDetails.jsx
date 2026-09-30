@@ -204,7 +204,7 @@ const MeetingDetails = () => {
           <Section title="Executive Summary" icon={<FileText size={18} color="#a855f7" />}>
             {isProcessing ? <ProcessingPlaceholder text="Generating summary..." /> : 
              !meeting.insight ? <span style={{color: 'rgba(255,255,255,0.4)'}}>No summary available.</span> :
-             <p>{meeting.insight.summary}</p>
+             <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>{meeting.insight.summary}</div>
             }
           </Section>
 
@@ -255,7 +255,23 @@ const MeetingDetails = () => {
         </div>
 
         {/* Right Column: Transcript */}
-        <Section title="Raw Transcript" icon={<FileText size={18} />} className="transcript-section">
+        <Section 
+          title={
+            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+              <span>Raw Transcript</span>
+              {!isProcessing && meeting.transcript && (
+                <button 
+                  onClick={() => navigator.clipboard.writeText(meeting.transcript.raw_text)}
+                  style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '4px', padding: '4px 8px', color: '#fff', fontSize: '0.8rem', cursor: 'pointer' }}
+                >
+                  Copy All
+                </button>
+              )}
+            </div>
+          } 
+          icon={<FileText size={18} />} 
+          className="transcript-section"
+        >
           <div style={{ 
             maxHeight: '600px', overflowY: 'auto', paddingRight: '0.5rem',
             scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.2) transparent'

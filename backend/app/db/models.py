@@ -63,6 +63,7 @@ class Meeting(Base):
     
     # Relationships
     user = relationship("User", back_populates="meetings")
+    api_key = relationship("APIKey")
     transcript = relationship("Transcript", back_populates="meeting", uselist=False, cascade="all, delete-orphan")
     insight = relationship("MeetingInsight", back_populates="meeting", uselist=False, cascade="all, delete-orphan")
 

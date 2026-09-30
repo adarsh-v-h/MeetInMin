@@ -6,6 +6,7 @@ class ActionItem(BaseModel):
     assignee: str = Field(description="The person responsible for the task. Use 'Unassigned' if not mentioned.")
 
 class MeetingInsights(BaseModel):
+    full_transcript: str = Field(description="The complete, word-for-word transcript of the entire audio recording. Do not summarize this field.")
     summary: str = Field(description="A brief, executive summary of the overall meeting.")
     key_decisions: List[str] = Field(description="A list of key decisions that were made during the meeting.")
     action_items: List[ActionItem] = Field(description="A list of action items assigned to individuals.")

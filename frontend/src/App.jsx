@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Landing from './pages/Landing';
 import Register from './pages/Register';
 import Login from './pages/Login';
+import CompleteProfile from './pages/CompleteProfile';
 import AppShell from './components/AppShell';
 import Dashboard from './pages/Dashboard';
 import MeetingDetails from './pages/MeetingDetails';
@@ -18,6 +19,7 @@ function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/register" element={<Register />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/complete-profile" element={<CompleteProfile />} />
         
         {/* Private Dashboard Routes wrapped in AppShell */}
         <Route element={<AppShell />}>

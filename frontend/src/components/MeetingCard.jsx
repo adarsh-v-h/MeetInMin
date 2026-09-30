@@ -106,35 +106,69 @@ const MeetingCard = ({ meeting }) => {
         </div>
       </div>
 
-      <button
-        onClick={() => navigate(`/meetings/${meeting.id}`)}
-        style={{
-          width: '100%',
-          padding: '0.75rem',
-          marginTop: '1rem',
-          background: 'rgba(255, 255, 255, 0.05)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          borderRadius: '8px',
-          color: '#fff',
-          fontSize: '0.9rem',
-          fontWeight: '500',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '0.5rem',
-          transition: 'all 0.2s'
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-        }}
-      >
-        View Details
-        <ArrowRight size={16} />
-      </button>
+      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+        <button
+          onClick={() => navigate(`/meetings/${meeting.id}`)}
+          style={{
+            flex: 1,
+            padding: '0.75rem',
+            background: 'rgba(255, 255, 255, 0.05)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '8px',
+            color: '#fff',
+            fontSize: '0.9rem',
+            fontWeight: '500',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.5rem',
+            transition: 'all 0.2s'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+          }}
+        >
+          View Details
+          <ArrowRight size={16} />
+        </button>
+
+        {(statusConfig.text === 'Failed' || meeting.status === 'uploading') && (
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
+              const token = localStorage.getItem('token');
+              try {
+                await fetch(`http://localhost:8000/v1/meetings/${meeting.id}/retry`, {
+                  method: 'POST',
+                  headers: { 'Authorization': `Bearer ${token}` }
+                });
+                window.location.reload();
+              } catch(err) {
+                console.error(err);
+              }
+            }}
+            style={{
+              padding: '0.75rem 1rem',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.2)',
+              borderRadius: '8px',
+              color: '#ef4444',
+              fontSize: '0.9rem',
+              fontWeight: '500',
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}
+          >
+            Retry
+          </button>
+        )}
+      </div>
     </div>
   );
 };
