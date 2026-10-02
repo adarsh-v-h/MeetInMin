@@ -1,5 +1,6 @@
 import React from 'react';
 import Navbar from '../components/Navbar';
+import { Link } from 'react-router-dom';
 
 function Landing() {
   return (
@@ -15,8 +16,10 @@ function Landing() {
               MeetInMin silently records your browser audio, analyzes the transcript, and automates your follow-ups. No awkward bots joining your calls.
             </p>
             <div className="hero-buttons">
-              <button className="btn-primary" style={{ fontSize: '1.1rem' }}>Install Chrome Extension</button>
-              <button className="btn-secondary" style={{ fontSize: '1.1rem' }}>View Demo</button>
+              <Link to="/register" className="btn-primary" style={{ fontSize: '1.1rem', textDecoration: 'none', display: 'inline-block' }}>Get Started Free</Link>
+              <a href="/MeetInMin-Extension.zip" download="MeetInMin-Extension.zip" className="btn-secondary" style={{ fontSize: '1.1rem', textDecoration: 'none', display: 'inline-block' }}>
+                Download Extension
+              </a>
             </div>
             
             <div className="hero-stats">
@@ -56,7 +59,7 @@ function Landing() {
 
             <div className="glass-panel bento-small bento-card" style={{ background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%)' }}>
               <h3>2. Neural Analysis</h3>
-              <p>Powered by Zoho Catalyst STT and Google Gemini 1.5 Flash, processing hours of audio in seconds.</p>
+              <p>Powered by Zoho Catalyst STT and Zoho GLM, processing hours of audio in seconds.</p>
               <img src="/ai-waves.png" alt="AI Waves" className="card-image" style={{ objectFit: 'contain', marginTop: 'auto' }} />
             </div>
 

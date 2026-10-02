@@ -1,47 +1,68 @@
-import json
 import logging
-import google.generativeai as genai
-from app.core.config import settings
 from app.schemas.meeting import MeetingInsights
+from app.services.zoho.stt import transcribe_audio_with_zoho, ZohoSTTError
+from app.services.zoho.glm import analyze_transcript_with_zoho_glm, ZohoGLMError
 
 logger = logging.getLogger(__name__)
 
-# Configure the SDK globally using your free API key
-genai.configure(api_key=settings.GEMINI_API_KEY)
+async def process_meeting_audio_async(audio_file_path: str, on_transcript_cb=None) -> MeetingInsights | None:
+    """
+    Takes a raw audio file and uses Zoho STT to transcribe it, followed by Zoho GLM to extract
+    structured meeting insights.
 
-async def generate_meeting_insights(transcript: str) -> MeetingInsights | None:
-    """Takes a raw audio transcript and uses Gemini to generate structured meeting insights."""
-    if not transcript or not transcript.strip():
-        return {"error": "Transcript is empty."}
-        
-    try:
-        # We use gemini-1.5-flash for its massive 1M token context window and blazing speed
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        prompt = f"""
-You are an expert executive assistant. I will provide you with a raw, unformatted speech-to-text transcript of a meeting.
-Your job is to read it carefully and extract a summary, key decisions, and action items.
-
-Here is the meeting transcript:
------------------
-{transcript}
------------------
-"""
-        
-        # We pass the Pydantic model directly to Gemini. This forces the model to 
-        # strictly adhere to our schema and guarantees valid JSON!
-        response = await model.generate_content_async(
-            prompt,
-            generation_config=genai.GenerationConfig(
-                response_mime_type="application/json",
-                response_schema=MeetingInsights,
-                temperature=0.2, # Low temperature for more factual extraction
-            )
-        )
-        
-        # Parse the guaranteed JSON text directly into our Pydantic object
-        return MeetingInsights.model_validate_json(response.text)
-        
-    except Exception as e:
-        logger.error(f"Error generating insights with Gemini: {e}")
+    Args:
+        audio_file_path: Path to the uploaded audio file.
+        on_transcript_cb: Optional async or sync callback function to store raw transcript in DB
+                          as soon as STT completes, preserving it as the source of truth.
+    """
+    if not audio_file_path:
+        logger.error("No audio file path provided for processing.")
         return None
+
+    try:
+        # Step 1: Transcribe audio using Zoho Speech-to-Text
+        logger.info(f"Transcribing audio with Zoho Speech-to-Text: {audio_file_path}")
+        raw_transcript = await transcribe_audio_with_zoho(audio_file_path)
+
+        if not raw_transcript:
+            logger.error("Zoho Speech-to-Text returned an empty transcript.")
+            return None
+
+        logger.info(f"Zoho STT complete. Transcript length: {len(raw_transcript)} chars.")
+
+        # If a callback was provided, invoke it immediately to persist raw transcript to DB
+        if on_transcript_cb:
+            try:
+                if callable(on_transcript_cb):
+                    res = on_transcript_cb(raw_transcript)
+                    if hasattr(res, "__await__"):
+                        await res
+            except Exception as cb_err:
+                logger.error(f"Error in transcript callback: {cb_err}")
+
+        # Step 2: Generate structured meeting insights using Zoho GLM
+        logger.info("Analyzing transcript with Zoho GLM...")
+        insights = await analyze_transcript_with_zoho_glm(raw_transcript)
+        return insights
+
+    except (ZohoSTTError, ZohoGLMError) as zoho_err:
+        logger.error(f"Zoho AI pipeline failed: {zoho_err}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error in Zoho AI processing pipeline: {e}")
+        return None
+
+def process_meeting_audio(audio_file_path: str) -> MeetingInsights | None:
+    """Synchronous wrapper for legacy callers."""
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # If running in an event loop thread, create new task or run until complete
+            import nest_asyncio
+            nest_asyncio.apply()
+            return loop.run_until_complete(process_meeting_audio_async(audio_file_path))
+        else:
+            return loop.run_until_complete(process_meeting_audio_async(audio_file_path))
+    except Exception:
+        return asyncio.run(process_meeting_audio_async(audio_file_path))

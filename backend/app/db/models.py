@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.database import Base
@@ -36,9 +36,13 @@ class APIKey(Base):
     
     # Give the user a way to identify keys (e.g., "My Laptop", "Desktop Extension")
     name = Column(String(50), default="Default Key")
+    status = Column(String(20), default="ACTIVE")
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
+    __table_args__ = (UniqueConstraint('user_id', 'name', name='uix_user_key_name'),)
+
     # Relationship back to the User
     user = relationship("User", back_populates="api_keys")
 
@@ -48,17 +52,21 @@ class Meeting(Base):
     
     id = Column(String(36), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    api_key_id = Column(Integer, ForeignKey("api_keys.id"), nullable=True)
     
     title = Column(String(255), default="Untitled Meeting")
     audio_file_path = Column(String(1024), nullable=True)
     status = Column(String(50), default="uploading") # uploading, transcribing, analyzing, completed, failed
+    duration = Column(Integer, nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
     user = relationship("User", back_populates="meetings")
+    api_key = relationship("APIKey")
     transcript = relationship("Transcript", back_populates="meeting", uselist=False, cascade="all, delete-orphan")
     insight = relationship("MeetingInsight", back_populates="meeting", uselist=False, cascade="all, delete-orphan")
+    email_context_sources = relationship("EmailContextSource", back_populates="meeting", cascade="all, delete-orphan")
 
 class Transcript(Base):
     __tablename__ = "transcripts"
@@ -99,3 +107,23 @@ class KeyDecision(Base):
     decision_text = Column(Text, nullable=False)
     
     insight = relationship("MeetingInsight", back_populates="key_decisions")
+
+
+class EmailContextSource(Base):
+    """Stores attribution records for emails that were used as context for a meeting analysis."""
+    __tablename__ = "email_context_sources"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    meeting_id = Column(String(36), ForeignKey("meetings.id"), nullable=False)
+    
+    # Google's permanent, stable message identifier
+    gmail_message_id = Column(String(255), nullable=False)
+    subject = Column(String(500), nullable=True)
+    sender = Column(String(255), nullable=True)
+    received_at = Column(DateTime(timezone=True), nullable=True)
+    # 200-char preview for display in the UI — we never store the full email body
+    snippet = Column(Text, nullable=True)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    meeting = relationship("Meeting", back_populates="email_context_sources")

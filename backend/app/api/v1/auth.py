@@ -176,18 +176,3 @@ async def complete_profile(data: GoogleProfileComplete, db: DbSession):
     access_token = create_access_token(data={"sub": db_user.email, "user_id": db_user.id})
     return Token(access_token=access_token, token_type="bearer")
 
-@router.post("/generate-api-key")
-async def generate_extension_api_key(current_user: CurrentUser, db: DbSession):
-    from app.db.models import APIKey
-    api_key, api_key_hash = generate_api_key()
-    
-    new_key = APIKey(
-        user_id=current_user.id,
-        key_hash=api_key_hash,
-        name="Chrome Extension Key"
-    )
-    db.add(new_key)
-    db.commit()
-    
-    # Return the RAW api key ONLY ONCE. The user copies it to the extension.
-    return {"message": "API Key generated successfully", "api_key": api_key}
