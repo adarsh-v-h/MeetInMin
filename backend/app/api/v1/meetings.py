@@ -16,52 +16,103 @@ router = APIRouter()
 
 import logging
 from app.db.database import SessionLocal
-from app.db.models import Meeting, Transcript, MeetingInsight, ActionItem, KeyDecision
+from app.db.models import Meeting, Transcript, MeetingInsight, ActionItem, KeyDecision, EmailContextSource
 from app.schemas.meeting import PaginatedMeetings, MeetingDetailResponse
 from app.api.deps import CurrentUser
 
 logger = logging.getLogger(__name__)
 
 async def process_audio_background(meeting_id: str, file_path: str):
-    from app.services.llm import process_meeting_audio
-    
-    # We create a new dedicated DB session for the background task
+    from app.services.zoho.stt import transcribe_audio_with_zoho
+    from app.services.zoho.glm import analyze_transcript_with_zoho_glm
+    from app.db.database import SessionLocal
+    from app.db.models import Meeting, Transcript, MeetingInsight, ActionItem, KeyDecision
+
     db = SessionLocal()
     try:
         meeting = db.query(Meeting).filter(Meeting.id == meeting_id).first()
         if not meeting:
             logger.error(f"Meeting {meeting_id} not found.")
             return
-            
-        logger.info(f"✅ Starting AI Analysis for meeting {meeting_id}")
-        meeting.status = "analyzing"
+
+        logger.info(f"✅ Starting Zoho AI Analysis for meeting {meeting_id}")
+        meeting.status = "transcribing"
         db.commit()
-        
-        # 1. Get LLM Insights directly from audio!
-        insights = await asyncio.to_thread(process_meeting_audio, file_path)
-        
-        if not insights:
+
+        # Step 1: Transcribe audio with Zoho Speech-to-Text
+        raw_transcript = await transcribe_audio_with_zoho(file_path)
+
+        if not raw_transcript:
+            logger.error(f"Zoho STT produced empty transcript for meeting {meeting_id}")
             meeting.status = "failed"
             db.commit()
             return
-            
-        # 1.5 Save transcript to DB
-        from app.db.models import Transcript
-        new_transcript = Transcript(meeting_id=meeting.id, raw_text=insights.full_transcript)
-        db.add(new_transcript)
-            
-        # 2. Save Insights to DB
+
+        # Step 2: Save raw transcript to DB as source of truth
+        existing_transcript = db.query(Transcript).filter(Transcript.meeting_id == meeting.id).first()
+        if existing_transcript:
+            existing_transcript.raw_text = raw_transcript
+        else:
+            new_transcript = Transcript(meeting_id=meeting.id, raw_text=raw_transcript)
+            db.add(new_transcript)
+
+        meeting.status = "analyzing"
+        db.commit()
+        logger.info(f"📝 Raw transcript saved to DB for meeting {meeting_id}.")
+
+        # Step 3: Fetch email context from Gmail (if user has Google connected)
+        # Load the user to check for a Google refresh token
+        user = db.query(User).filter(User.id == meeting.user_id).first()
+        email_context = None
+        attribution_records = []
+
+        if user and user.google_refresh_token:
+            logger.info(f"📧 User has Gmail connected. Building email context for meeting {meeting_id}...")
+            try:
+                from app.services.gmail.context_builder import build_email_context
+                email_context, attribution_records = await build_email_context(
+                    transcript=raw_transcript,
+                    meeting_date=meeting.created_at,
+                    google_refresh_token=user.google_refresh_token,
+                )
+                if email_context:
+                    logger.info(f"✉️  Email context assembled ({len(attribution_records)} source email(s)).")
+                else:
+                    logger.info("📭 No relevant emails found — proceeding with transcript-only analysis.")
+            except Exception as gmail_err:
+                logger.warning(f"Gmail context build failed for meeting {meeting_id} ({gmail_err}). Proceeding without email context.")
+                email_context = None
+                attribution_records = []
+        else:
+            logger.info(f"📭 No Gmail connection for this user. Proceeding with transcript-only analysis.")
+
+        # Step 4: Analyze transcript with Zoho GLM (with email context if available)
+        insights = await analyze_transcript_with_zoho_glm(raw_transcript, email_context=email_context)
+
+
+        if not insights:
+            logger.error(f"Zoho GLM returned no insights for meeting {meeting_id}")
+            meeting.status = "failed"
+            db.commit()
+            return
+
+        # Step 5: Save Insights to DB
+        existing_insight = db.query(MeetingInsight).filter(MeetingInsight.meeting_id == meeting.id).first()
+        if existing_insight:
+            db.delete(existing_insight)
+            db.flush()
+
         new_insight = MeetingInsight(
             meeting_id=meeting.id,
             summary=insights.summary
         )
         db.add(new_insight)
-        db.flush() # flush to get new_insight.id
-        
+        db.flush()
+
         # Save Key Decisions
         for decision in insights.key_decisions:
             db.add(KeyDecision(insight_id=new_insight.id, decision_text=decision))
-            
+
         # Save Action Items
         for item in insights.action_items:
             db.add(ActionItem(
@@ -69,21 +120,35 @@ async def process_audio_background(meeting_id: str, file_path: str):
                 task=item.task,
                 assignee=item.assignee
             ))
-            
+
+        # Step 6: Save email attribution records (which emails were used as context)
+        if attribution_records:
+            # Clear any existing attribution records for idempotency
+            db.query(EmailContextSource).filter(EmailContextSource.meeting_id == meeting.id).delete()
+            for record in attribution_records:
+                db.add(EmailContextSource(
+                    meeting_id=meeting.id,
+                    gmail_message_id=record["gmail_message_id"],
+                    subject=record["subject"],
+                    sender=record["sender"],
+                    received_at=record["received_at"],
+                    snippet=record["snippet"],
+                ))
+            logger.info(f"📎 Saved {len(attribution_records)} email context source(s) for meeting {meeting_id}.")
+
         meeting.status = "completed"
         db.commit()
-        logger.info(f"✨ Successfully analyzed and saved meeting {meeting_id}!")
-        
+        logger.info(f"✨ Successfully analyzed and saved meeting {meeting_id} with Zoho AI!")
+
     except Exception as e:
-        logger.error(f"Background task failed: {e}")
+        logger.error(f"Background task failed for meeting {meeting_id}: {e}")
         db.rollback()
-        
-        # Try to mark as failed
+
         meeting = db.query(Meeting).filter(Meeting.id == meeting_id).first()
         if meeting:
             meeting.status = "failed"
             db.commit()
-            
+
     finally:
         db.close()
 
@@ -143,7 +208,7 @@ async def upload_meeting_audio(
     db.commit()
     db.refresh(new_meeting)
     
-    # Queue the Meeting for background sequential processing (prevents Gemini rate limits)
+    # Queue the Meeting for background sequential processing (prevents Zoho rate limits)
     audio_queue.put_nowait((new_meeting.id, file_path))
     
     return {

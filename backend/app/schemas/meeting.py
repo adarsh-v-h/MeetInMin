@@ -62,6 +62,17 @@ class DBTranscript(BaseModel):
     class Config:
         from_attributes = True
 
+class DBEmailContextSource(BaseModel):
+    id: int
+    gmail_message_id: str
+    subject: Optional[str]
+    sender: Optional[str]
+    received_at: Optional[datetime]
+    snippet: Optional[str]
+    
+    class Config:
+        from_attributes = True
+
 class MeetingDetailResponse(BaseModel):
     id: str
     title: str
@@ -72,6 +83,7 @@ class MeetingDetailResponse(BaseModel):
     
     transcript: Optional[DBTranscript]
     insight: Optional[DBMeetingInsight]
+    email_context_sources: List[DBEmailContextSource] = []
     
     class Config:
         from_attributes = True

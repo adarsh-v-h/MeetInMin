@@ -1,82 +1,68 @@
 import logging
-from google import genai
-from google.genai import types
-from app.core.config import settings
 from app.schemas.meeting import MeetingInsights
-
-import time
+from app.services.zoho.stt import transcribe_audio_with_zoho, ZohoSTTError
+from app.services.zoho.glm import analyze_transcript_with_zoho_glm, ZohoGLMError
 
 logger = logging.getLogger(__name__)
 
-# Configure the new official SDK
-client = genai.Client(api_key=settings.GEMINI_API_KEY)
+async def process_meeting_audio_async(audio_file_path: str, on_transcript_cb=None) -> MeetingInsights | None:
+    """
+    Takes a raw audio file and uses Zoho STT to transcribe it, followed by Zoho GLM to extract
+    structured meeting insights.
 
-def process_meeting_audio(audio_file_path: str, max_retries: int = 5) -> MeetingInsights | None:
-    """Takes a raw audio file and uses Gemini to directly generate structured meeting insights."""
+    Args:
+        audio_file_path: Path to the uploaded audio file.
+        on_transcript_cb: Optional async or sync callback function to store raw transcript in DB
+                          as soon as STT completes, preserving it as the source of truth.
+    """
     if not audio_file_path:
+        logger.error("No audio file path provided for processing.")
         return None
-        
-    try:
-        # 1. Upload the audio file directly to Gemini
-        logger.info(f"Uploading audio file {audio_file_path} to Gemini...")
-        # We explicitly tell Google this is audio/webm. Otherwise, Google's backend
-        # assumes .webm is a video file, realizes there's no video stream, and crashes (FileState = FAILED)
-        gemini_file = client.files.upload(
-            file=audio_file_path,
-            config={'mime_type': 'audio/webm'}
-        )
-        logger.info(f"Audio file uploaded successfully. URI: {gemini_file.uri}")
-        
-        # Wait for Google to finish processing the audio file
-        while True:
-            gemini_file = client.files.get(name=gemini_file.name)
-            if gemini_file.state == "ACTIVE":
-                logger.info("Audio file is now ACTIVE and ready for generation.")
-                break
-            elif gemini_file.state == "FAILED":
-                logger.error("Google failed to process the uploaded audio file.")
-                return None
-            logger.info(f"File state is {gemini_file.state}... waiting 2 seconds.")
-            time.sleep(2)
-        
-        # 2. Ask Gemini to analyze the audio directly
-        prompt = """
-You are an expert executive assistant. I have provided you with the raw audio recording of a meeting.
-Your job is to listen carefully and perform two tasks:
-1. Provide a word-for-word complete transcript of the entire audio.
-2. Extract a highly structured Executive Summary, key decisions, and action items.
 
-For the Executive Summary, please format it professionally. Use bullet points and paragraphs to make it highly readable and easy to skim. Don't just output a single block of text.
-"""
-        
-        # We use gemini-3.8-flash as recommended by the Google API error for latest limits
-        for attempt in range(max_retries):
+    try:
+        # Step 1: Transcribe audio using Zoho Speech-to-Text
+        logger.info(f"Transcribing audio with Zoho Speech-to-Text: {audio_file_path}")
+        raw_transcript = await transcribe_audio_with_zoho(audio_file_path)
+
+        if not raw_transcript:
+            logger.error("Zoho Speech-to-Text returned an empty transcript.")
+            return None
+
+        logger.info(f"Zoho STT complete. Transcript length: {len(raw_transcript)} chars.")
+
+        # If a callback was provided, invoke it immediately to persist raw transcript to DB
+        if on_transcript_cb:
             try:
-                logger.info(f"Attempt {attempt + 1}: Asking Gemini for insights...")
-                response = client.models.generate_content(
-                    model='gemini-3.8-flash',
-                    contents=[gemini_file, prompt],
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        response_schema=MeetingInsights,
-                        temperature=0.2, # Low temperature for more factual extraction
-                    )
-                )
-                
-                logger.info("Successfully generated insights from Gemini!")
-                return MeetingInsights.model_validate_json(response.text)
-                
-            except Exception as e:
-                err_msg = str(e)
-                if "503" in err_msg or "429" in err_msg or "UNAVAILABLE" in err_msg or "exhausted" in err_msg.lower():
-                    if attempt < max_retries - 1:
-                        # Google's strict 20 RPM limit requires longer backoffs
-                        sleep_time = (2 ** attempt) * 10  # 10s, 20s, 40s, 80s...
-                        logger.warning(f"Gemini Rate Limit hit! Waiting {sleep_time} seconds to cool down... (Attempt {attempt+1}/{max_retries})")
-                        time.sleep(sleep_time)
-                        continue
-                raise e # Re-raise if we are out of retries or it's a different error
-                
-    except Exception as e:
-        logger.error(f"Error generating insights with Gemini: {e}")
+                if callable(on_transcript_cb):
+                    res = on_transcript_cb(raw_transcript)
+                    if hasattr(res, "__await__"):
+                        await res
+            except Exception as cb_err:
+                logger.error(f"Error in transcript callback: {cb_err}")
+
+        # Step 2: Generate structured meeting insights using Zoho GLM
+        logger.info("Analyzing transcript with Zoho GLM...")
+        insights = await analyze_transcript_with_zoho_glm(raw_transcript)
+        return insights
+
+    except (ZohoSTTError, ZohoGLMError) as zoho_err:
+        logger.error(f"Zoho AI pipeline failed: {zoho_err}")
         return None
+    except Exception as e:
+        logger.error(f"Unexpected error in Zoho AI processing pipeline: {e}")
+        return None
+
+def process_meeting_audio(audio_file_path: str) -> MeetingInsights | None:
+    """Synchronous wrapper for legacy callers."""
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # If running in an event loop thread, create new task or run until complete
+            import nest_asyncio
+            nest_asyncio.apply()
+            return loop.run_until_complete(process_meeting_audio_async(audio_file_path))
+        else:
+            return loop.run_until_complete(process_meeting_audio_async(audio_file_path))
+    except Exception:
+        return asyncio.run(process_meeting_audio_async(audio_file_path))

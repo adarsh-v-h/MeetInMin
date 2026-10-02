@@ -9,8 +9,8 @@ audio_queue = asyncio.Queue()
 async def process_queue():
     """
     Background worker that consumes the queue one by one.
-    This guarantees that we only ever hit the Gemini API with 1 request at a time,
-    preventing 429 Quota Exceeded and 503 Overloaded errors when processing multiple files.
+    This guarantees that we process Zoho audio STT and GLM requests sequentially,
+    preventing concurrency issues and rate limits when processing multiple audio files.
     """
     # Import inside the function to avoid circular imports during startup
     from app.api.v1.meetings import process_audio_background

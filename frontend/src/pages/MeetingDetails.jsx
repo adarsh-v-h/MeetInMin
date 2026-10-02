@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ChevronLeft, Calendar, Clock, Key, Download, 
-  CheckSquare, FileText, Lightbulb, AlertCircle, RefreshCw
+  CheckSquare, FileText, Lightbulb, AlertCircle, RefreshCw, Mail, ExternalLink
 } from 'lucide-react';
 
 const getStatusConfig = (status) => {
@@ -58,6 +58,93 @@ const ProcessingPlaceholder = ({ text }) => (
       animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite'
     }} />
     <span>{text}</span>
+  </div>
+);
+
+// Nudge banner shown when no Gmail context was used for the analysis
+const GmailNudgeBanner = () => (
+  <div style={{
+    background: 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(168,85,247,0.08))',
+    border: '1px solid rgba(59,130,246,0.25)',
+    borderRadius: '12px',
+    padding: '1.25rem 1.5rem',
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '1rem',
+  }}>
+    <div style={{
+      width: '36px', height: '36px', borderRadius: '50%',
+      background: 'rgba(59,130,246,0.15)', display: 'flex', alignItems: 'center',
+      justifyContent: 'center', flexShrink: 0
+    }}>
+      <Mail size={18} color="#3b82f6" />
+    </div>
+    <div style={{ flex: 1 }}>
+      <p style={{ margin: '0 0 0.4rem', fontWeight: '600', color: '#fff', fontSize: '0.95rem' }}>
+        This analysis was based on your meeting audio alone.
+      </p>
+      <p style={{ margin: '0 0 0.9rem', color: 'rgba(255,255,255,0.6)', fontSize: '0.88rem', lineHeight: '1.6' }}>
+        In places where context was missing, our AI made its best guess. Connect your Gmail and
+        we'll cross-reference your recent emails to fill those gaps — giving you sharper summaries
+        and more accurate action items.
+      </p>
+      <a
+        href="/settings"
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+          background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)',
+          borderRadius: '6px', padding: '0.4rem 0.85rem',
+          color: '#3b82f6', fontWeight: '600', fontSize: '0.85rem',
+          textDecoration: 'none', transition: 'background 0.2s'
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = 'rgba(59,130,246,0.25)'}
+        onMouseLeave={e => e.currentTarget.style.background = 'rgba(59,130,246,0.15)'}
+      >
+        <Mail size={14} /> Connect Gmail
+      </a>
+    </div>
+  </div>
+);
+
+// Email context source card — attribution only, no drafts
+const EmailSourceCard = ({ source }) => (
+  <div style={{
+    background: 'rgba(255,255,255,0.03)',
+    border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: '10px',
+    padding: '1rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+      <div style={{ fontWeight: '600', color: '#fff', fontSize: '0.9rem', flex: 1 }}>{source.subject || '(no subject)'}</div>
+      <a
+        href={`https://mail.google.com/mail/u/0/#all/${source.gmail_message_id}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+          color: '#3b82f6', fontSize: '0.78rem', textDecoration: 'none', flexShrink: 0
+        }}
+        title="Open in Gmail"
+      >
+        Open <ExternalLink size={12} />
+      </a>
+    </div>
+    <div style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.5)' }}>
+      From: {source.sender || 'Unknown'}
+      {source.received_at && (
+        <span style={{ marginLeft: '0.75rem' }}>
+          · {new Date(source.received_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+        </span>
+      )}
+    </div>
+    {source.snippet && (
+      <div style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.55)', lineHeight: '1.5', fontStyle: 'italic' }}>
+        "{source.snippet.slice(0, 180)}{source.snippet.length > 180 ? '…' : ''}"
+      </div>
+    )}
   </div>
 );
 
@@ -243,14 +330,23 @@ const MeetingDetails = () => {
             </Section>
           </div>
 
-          <Section title="Suggested Actions (Gmail)" icon={<RefreshCw size={18} color="#3b82f6" />}>
-            <div style={{ 
-              background: 'rgba(59, 130, 246, 0.05)', border: '1px dashed rgba(59, 130, 246, 0.3)',
-              padding: '1.5rem', borderRadius: '8px', textAlign: 'center'
-            }}>
-              <span style={{ color: 'rgba(255,255,255,0.6)' }}>Suggestions will appear when MeetInMin finds useful connections between your meetings and mailbox.</span>
-            </div>
-          </Section>
+          {/* Email Context Sources — shown when Gmail enrichment ran */}
+          {!isProcessing && meeting.status === 'completed' && (
+            meeting.email_context_sources?.length > 0 ? (
+              <Section title="Email Context Sources" icon={<Mail size={18} color="#3b82f6" />}>
+                <p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>
+                  The following emails were used as additional context to improve the accuracy of this analysis.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {meeting.email_context_sources.map((source) => (
+                    <EmailSourceCard key={source.id} source={source} />
+                  ))}
+                </div>
+              </Section>
+            ) : (
+              <GmailNudgeBanner />
+            )
+          )}
 
         </div>
 

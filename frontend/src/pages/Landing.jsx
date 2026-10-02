@@ -59,7 +59,7 @@ function Landing() {
 
             <div className="glass-panel bento-small bento-card" style={{ background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%)' }}>
               <h3>2. Neural Analysis</h3>
-              <p>Powered by Zoho Catalyst STT and Google Gemini 1.5 Flash, processing hours of audio in seconds.</p>
+              <p>Powered by Zoho Catalyst STT and Zoho GLM, processing hours of audio in seconds.</p>
               <img src="/ai-waves.png" alt="AI Waves" className="card-image" style={{ objectFit: 'contain', marginTop: 'auto' }} />
             </div>
 

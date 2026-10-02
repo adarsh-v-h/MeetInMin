@@ -57,7 +57,8 @@
   * Manages the user profile and displays the state of their Google Integration.
   * Allows users to securely connect or disconnect their Gmail account, instantly nullifying their database OAuth token.
 * **Extension Branding & Distribution:** Rebranded the Chrome extension to "MeetInMin Extension" with matching high-res icons. Zipped and deployed it directly on the Landing page for one-click user downloads.
-* **Environment Configuration:** Securely abstracted all Zoho, Gemini, Google Auth, and JWT secrets out of the codebase into a `.env` pipeline using strict Pydantic Settings.
+* **Environment Configuration:** Securely abstracted all Zoho Catalyst (STT & GLM), Google Auth, and JWT secrets out of the codebase into a `.env` pipeline using strict Pydantic Settings.
+* **Zoho AI Services Integration (STT & GLM):** Fully migrated Speech-to-Text and Meeting Intelligence pipeline to Zoho Catalyst Zia STT (with automated 16kHz mono WAV conversion) and Zoho GLM (`crm-di-glm47b_30b_it`). Raw transcripts are stored in DB as source of truth before generating structured executive summaries, decisions, and action items.
 
 ---
 

@@ -1,5 +1,5 @@
 const FALLBACK_MESSAGES = {
-  extensionName: "TabAudio Forge",
+  extensionName: "MeetInMin",
   extensionDescription: "Record audio from the active browser tab and save it locally.",
   subtitle: "Record current tab audio",
   labelStatus: "Status",
