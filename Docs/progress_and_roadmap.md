@@ -69,6 +69,17 @@ _Last updated: October 2026_
 
 ---
 
+### 7. Extension Upload Assurance & Offline Retry Queue (New)
+- **Local Download Backup:** Added prominent "Download Local Copy" button in the extension popup UI. Users can save a `.webm` backup anytime during or after recording.
+- **Offline Retry Queue:** Offscreen document retains audio data in IndexedDB if backend upload fails or network drops. Automatically retries pending uploads in background.
+- **Clear User Assurance:** Real-time feedback in extension popup ("Uploading to MeetInMin...", "Uploaded successfully!").
+
+### 8. Backend Resilience & Audio Chunking (New)
+- **STT Audio Chunking:** Automatic `ffmpeg` segmentation splits long audio files (>10MB/100MB+) into 4-minute 16kHz mono WAV chunks before sending to Zoho STT, preventing `FILE_SIZE_MORE_THAN_ALLOWED_SIZE` 400 errors.
+- **Startup Recovery:** Backend startup re-queues any interrupted meetings (`uploaded`, `transcribing`, `analyzing`) with existing audio files into `audio_queue`.
+
+---
+
 ## 🗺️ What Is Left To Build
 
 ### Phase 1: Polish & Stability
@@ -77,8 +88,9 @@ _Last updated: October 2026_
 - [ ] **Error boundary UI** — graceful frontend fallbacks for network errors.
 
 ### Phase 2: Chrome Extension Polish
-- [ ] **API Key input in popup** — allow users to paste their key directly in the extension.
-- [ ] **Upload feedback** — show progress / success / failure state in the extension popup after audio is sent.
+- [x] **API Key input in popup** — allow users to select/paste their key directly in the extension.
+- [x] **Upload feedback & Safety Download** — progress / success / failure state with manual local `.webm` download button.
+- [x] **Offline retry queue** — retain recordings in IndexedDB and retry background uploads on network reconnect.
 
 ### Phase 3: Gmail — Phase 2 (Future)
 - [ ] **"Send Reply" button** (Frontend only, Coming Soon) — button exists in the UI, but is disabled with a tooltip. No backend logic yet.
