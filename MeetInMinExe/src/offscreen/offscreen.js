@@ -63,7 +63,7 @@ async function handleMessage(message) {
     case "OFFSCREEN_GET_STATUS":
       await recoverStoredRecording();
       updateDuration();
-      return { status, recoveredRecordingId: getRecoveredRecordingId() };
+      return { status, recoveredRecordingId: getRecoveredRecordingId(), currentObjectUrl };
     case "OFFSCREEN_START":
       return { status: await startRecording(message) };
     case "OFFSCREEN_PAUSE":
@@ -77,6 +77,10 @@ async function handleMessage(message) {
     case "OFFSCREEN_REVOKE_URL":
       revokeObjectUrl(message.url);
       return { status };
+    case "OFFSCREEN_GET_BLOB_URL":
+      return { url: await getOrCreateBlobUrl() };
+    case "OFFSCREEN_RETRY_UPLOADS":
+      return { retriedCount: await retryPendingUploads() };
     default:
       throw new Error(t("errorUnknownOffscreenMessageType", [message.type]));
   }
@@ -214,38 +218,88 @@ async function finalizeRecording() {
     const blob = new Blob(chunkBlobs, { type: status.mimeType });
     setStatus({ bytes: blob.size, chunks: chunkBlobs.length, durationMs: getDurationMs() });
 
+    // Always create local object URL so user can manually download anytime
+    currentObjectUrl = URL.createObjectURL(blob);
+
     // Attempt upload directly from offscreen where the Blob is alive.
     const uploaded = await tryUploadToBackend(blob, status.filename);
 
     let result;
     if (uploaded) {
-      // Upload succeeded — no blob URL needed.
+      // Upload succeeded — clean up IndexedDB chunks
+      await deleteRecordingData(recordingId);
+      recordingId = "";
       result = {
         uploaded: true,
-        filename: status.filename,
-        bytes: blob.size,
-        durationMs: status.durationMs,
-        status: { ...status, state: "saving", bytes: blob.size },
-      };
-    } else {
-      // Upload failed — fall back to local download via blob URL.
-      currentObjectUrl = URL.createObjectURL(blob);
-      result = {
         url: currentObjectUrl,
         filename: status.filename,
         bytes: blob.size,
         durationMs: status.durationMs,
-        status,
+        status: { ...status, state: "completed", bytes: blob.size },
+      };
+    } else {
+      // Upload failed — keep in IndexedDB for retry queue, provide local URL for download
+      result = {
+        uploaded: false,
+        url: currentObjectUrl,
+        filename: status.filename,
+        bytes: blob.size,
+        durationMs: status.durationMs,
+        status: { ...status, state: "completed", bytes: blob.size },
       };
     }
 
     await sendToWorker("RECORDING_COMPLETE", result);
-    await deleteRecordingData(recordingId);
-    recordingId = "";
   } catch (error) {
     setStatus({ state: "error", error: getErrorMessage(error) });
     sendToWorker("RECORDING_ERROR", { error: status.error, status }).catch(() => {});
   }
+}
+
+async function getOrCreateBlobUrl() {
+  if (currentObjectUrl) {
+    return currentObjectUrl;
+  }
+  if (recordingId) {
+    const chunkBlobs = await readRecordingChunks(recordingId);
+    if (chunkBlobs.length > 0) {
+      const blob = new Blob(chunkBlobs, { type: status.mimeType || "audio/webm" });
+      currentObjectUrl = URL.createObjectURL(blob);
+      return currentObjectUrl;
+    }
+  }
+  const recordings = await getStoredRecordings();
+  if (recordings.length > 0) {
+    const rec = recordings[0];
+    const chunkBlobs = await readRecordingChunks(rec.recordingId);
+    if (chunkBlobs.length > 0) {
+      const blob = new Blob(chunkBlobs, { type: rec.mimeType || "audio/webm" });
+      currentObjectUrl = URL.createObjectURL(blob);
+      return currentObjectUrl;
+    }
+  }
+  return "";
+}
+
+async function retryPendingUploads() {
+  const recordings = await getStoredRecordings();
+  let retried = 0;
+  for (const rec of recordings) {
+    if (!rec.chunks) continue;
+    try {
+      const chunkBlobs = await readRecordingChunks(rec.recordingId);
+      if (!chunkBlobs.length) continue;
+      const blob = new Blob(chunkBlobs, { type: rec.mimeType || "audio/webm" });
+      const uploaded = await tryUploadToBackend(blob, rec.filename);
+      if (uploaded) {
+        await deleteRecordingData(rec.recordingId);
+        retried++;
+      }
+    } catch (e) {
+      console.error("[MeetInMin] Error retrying upload for", rec.recordingId, e);
+    }
+  }
+  return retried;
 }
 
 async function finalizeRecoveredRecording(targetRecordingId) {

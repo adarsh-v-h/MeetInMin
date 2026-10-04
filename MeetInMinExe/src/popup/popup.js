@@ -8,6 +8,7 @@ const elements = {
   pauseButton: document.querySelector("#pauseButton"),
   resumeButton: document.querySelector("#resumeButton"),
   stopButton: document.querySelector("#stopButton"),
+  downloadButton: document.querySelector("#downloadButton"),
   apiKeySelect: document.querySelector("#apiKeySelect"),
   newApiKeyNameInput: document.querySelector("#newApiKeyNameInput"),
   newApiKeyInput: document.querySelector("#newApiKeyInput"),
@@ -30,6 +31,9 @@ function init() {
   elements.pauseButton.addEventListener("click", () => sendCommand("PAUSE_RECORDING"));
   elements.resumeButton.addEventListener("click", () => sendCommand("RESUME_RECORDING"));
   elements.stopButton.addEventListener("click", () => sendCommand("STOP_RECORDING"));
+  if (elements.downloadButton) {
+    elements.downloadButton.addEventListener("click", () => sendCommand("DOWNLOAD_LOCAL"));
+  }
 
   chrome.runtime.onMessage.addListener((message) => {
     if (!message || message.target !== "popup") {
@@ -123,22 +127,36 @@ function renderStatus(status) {
   elements.durationText.textContent = formatDuration(currentStatus.durationMs || 0);
   elements.formatText.textContent = formatMime(currentStatus.mimeType);
   elements.sizeText.textContent = formatBytes(currentStatus.bytes || 0);
-  elements.messageText.textContent = currentStatus.error || "";
+  
+  if (currentStatus.error) {
+    elements.messageText.textContent = currentStatus.error;
+    elements.messageText.style.color = "#ef4444";
+  } else if (currentStatus.state === "saving") {
+    elements.messageText.textContent = t("statusUploadingSafetyNotice");
+    elements.messageText.style.color = "#3b82f6";
+  } else if (currentStatus.state === "completed" && currentStatus.bytes > 0) {
+    elements.messageText.textContent = t("statusUploadSuccessNotice");
+    elements.messageText.style.color = "#10b981";
+  } else {
+    elements.messageText.textContent = "";
+  }
 
   setButtonStates(currentStatus.state);
 }
 
 function setControlsDisabled(disabled) {
   Object.values(getControlVisibility(currentStatus.state)).forEach(({ element }) => {
-    element.disabled = disabled;
+    if (element) element.disabled = disabled;
   });
 }
 
 function setButtonStates(state) {
   const controls = getControlVisibility(state);
   Object.values(controls).forEach(({ element, visible, disabled }) => {
-    element.hidden = !visible;
-    element.disabled = disabled;
+    if (element) {
+      element.hidden = !visible;
+      element.disabled = disabled;
+    }
   });
 
   const micOptionContainer = document.querySelector("#micOptionContainer");
@@ -169,6 +187,11 @@ function getControlVisibility(state) {
       visible: ["recording", "paused", "preparing"].includes(state),
       disabled: !["recording", "paused"].includes(state),
     },
+    download: {
+      element: elements.downloadButton,
+      visible: ["saving", "completed", "error"].includes(state) && currentStatus.bytes > 0,
+      disabled: false,
+    },
   };
 }
 
@@ -181,7 +204,7 @@ function getStatusText(status) {
     case "paused":
       return t("statusPaused");
     case "saving":
-      return t("statusSaving");
+      return t("statusUploading");
     case "completed":
       return t("statusCompleted");
     case "error":

@@ -124,5 +124,17 @@
   },
   "errorMicPermission": {
     "message": "Microphone access denied."
+  },
+  "buttonDownloadLocal": {
+    "message": "Download Local Copy"
+  },
+  "statusUploading": {
+    "message": "Uploading audio..."
+  },
+  "statusUploadingSafetyNotice": {
+    "message": "Uploading to MeetInMin. Download a local backup anytime for safety."
+  },
+  "statusUploadSuccessNotice": {
+    "message": "Uploaded to MeetInMin successfully!"
   }
 }

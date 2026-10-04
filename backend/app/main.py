@@ -14,15 +14,34 @@ from app.services.queue_manager import process_queue
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Reset any meetings that got stuck in 'analyzing' state during a server crash
+    import os
+    import logging
     from app.db.database import SessionLocal
     from app.db.models import Meeting
+    from app.services.queue_manager import audio_queue
     
+    logger = logging.getLogger(__name__)
+
+    # Re-queue any meetings that got interrupted or stuck during server shutdown
     db = SessionLocal()
     try:
-        stuck_meetings = db.query(Meeting).filter(Meeting.status.in_(['analyzing', 'uploading'])).update({'status': 'failed'}, synchronize_session=False)
+        pending_meetings = db.query(Meeting).filter(
+            Meeting.status.in_(['uploaded', 'uploading', 'transcribing', 'analyzing'])
+        ).all()
+
+        requeued_count = 0
+        for m in pending_meetings:
+            if m.audio_file_path and os.path.exists(m.audio_file_path):
+                m.status = 'uploaded'
+                audio_queue.put_nowait((m.id, m.audio_file_path))
+                requeued_count += 1
+            else:
+                m.status = 'failed'
         db.commit()
-    except Exception:
+        if requeued_count > 0:
+            logger.info(f"🔄 Re-queued {requeued_count} pending meeting(s) for processing.")
+    except Exception as e:
+        logger.error(f"Error recovering pending meetings on startup: {e}")
         db.rollback()
     finally:
         db.close()

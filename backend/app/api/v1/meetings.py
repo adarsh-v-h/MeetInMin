@@ -202,7 +202,7 @@ async def upload_meeting_audio(
         api_key_id=api_key_record.id,
         title=f"Meeting on {time.strftime('%b %d, %Y')}",
         audio_file_path=file_path,
-        status="uploading"
+        status="uploaded"
     )
     db.add(new_meeting)
     db.commit()

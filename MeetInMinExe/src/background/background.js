@@ -115,6 +115,8 @@ async function handleWorkerMessage(message) {
       return { status: await handleRecordingComplete(message) };
     case "RECOVERED_RECORDING":
       return { status: await handleRecoveredRecording(message) };
+    case "DOWNLOAD_LOCAL":
+      return { status: await triggerLocalDownload() };
     case "RECORDING_ERROR":
       await setStatus({ state: "error", error: message.error || t("errorRecordingFailed") });
       broadcast({ type: "RECORDING_ERROR", status, error: status.error });
@@ -122,6 +124,22 @@ async function handleWorkerMessage(message) {
     default:
       throw new Error(t("errorUnknownMessageType", [message.type]));
   }
+}
+
+async function triggerLocalDownload() {
+  if (await hasOffscreenDocument()) {
+    const res = await sendToOffscreen("OFFSCREEN_GET_BLOB_URL", {});
+    const url = res.url || pendingObjectUrl;
+    if (url) {
+      const downloadId = await chrome.downloads.download({
+        url: url,
+        filename: status.filename || "meeting_recording.webm",
+        saveAs: true,
+      });
+      await setSessionFields({ activeDownloadId: downloadId });
+    }
+  }
+  return status;
 }
 
 async function startRecording(message) {
