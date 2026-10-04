@@ -205,7 +205,40 @@ async function finalizeRecording() {
 
   try {
     await chunkWriteQueue;
-    const result = await createRecordingResult(recordingId);
+
+    // Read chunks and assemble the Blob right here — the blob is live in this context.
+    const chunkBlobs = await readRecordingChunks(recordingId);
+    if (!chunkBlobs.length) {
+      throw new Error(t("errorRecordingNoFile"));
+    }
+    const blob = new Blob(chunkBlobs, { type: status.mimeType });
+    setStatus({ bytes: blob.size, chunks: chunkBlobs.length, durationMs: getDurationMs() });
+
+    // Attempt upload directly from offscreen where the Blob is alive.
+    const uploaded = await tryUploadToBackend(blob, status.filename);
+
+    let result;
+    if (uploaded) {
+      // Upload succeeded — no blob URL needed.
+      result = {
+        uploaded: true,
+        filename: status.filename,
+        bytes: blob.size,
+        durationMs: status.durationMs,
+        status: { ...status, state: "saving", bytes: blob.size },
+      };
+    } else {
+      // Upload failed — fall back to local download via blob URL.
+      currentObjectUrl = URL.createObjectURL(blob);
+      result = {
+        url: currentObjectUrl,
+        filename: status.filename,
+        bytes: blob.size,
+        durationMs: status.durationMs,
+        status,
+      };
+    }
+
     await sendToWorker("RECORDING_COMPLETE", result);
     await deleteRecordingData(recordingId);
     recordingId = "";
@@ -238,10 +271,92 @@ async function finalizeRecoveredRecording(targetRecordingId) {
     error: "",
   });
 
-  const result = await createRecordingResult(targetRecordingId);
+  // Assemble blob and attempt upload directly from offscreen.
+  const chunkBlobs = await readRecordingChunks(targetRecordingId);
+  if (!chunkBlobs.length) {
+    throw new Error(t("errorRecordingNoFile"));
+  }
+  const blob = new Blob(chunkBlobs, { type: status.mimeType });
+  setStatus({ bytes: blob.size, chunks: chunkBlobs.length });
+
+  const uploaded = await tryUploadToBackend(blob, status.filename);
+
+  let result;
+  if (uploaded) {
+    result = {
+      uploaded: true,
+      filename: status.filename,
+      bytes: blob.size,
+      durationMs: status.durationMs,
+      status: { ...status, state: "saving", bytes: blob.size },
+    };
+  } else {
+    currentObjectUrl = URL.createObjectURL(blob);
+    result = {
+      url: currentObjectUrl,
+      filename: status.filename,
+      bytes: blob.size,
+      durationMs: status.durationMs,
+      status,
+    };
+  }
+
   await deleteRecordingData(targetRecordingId);
   recordingId = "";
   return result;
+}
+
+/**
+ * Attempts to POST the audio Blob directly to the MeetInMin backend.
+ * Must be called from the offscreen document where the Blob is live.
+ * Returns true on success, false on any failure (so caller can fall back to local download).
+ */
+async function tryUploadToBackend(blob, filename) {
+  try {
+    const storage = await chrome.storage.local.get("activeApiKey");
+    const apiKey = storage.activeApiKey;
+    if (!apiKey) {
+      console.log("[MeetInMin] No API key configured — skipping backend upload.");
+      return false;
+    }
+
+    const formData = new FormData();
+    formData.append("file", blob, filename);
+
+    // 3-minute timeout — plenty for a large local upload.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3 * 60 * 1000);
+
+    try {
+      console.log(`[MeetInMin] Uploading ${(blob.size / 1024 / 1024).toFixed(1)} MB to backend...`);
+      const response = await fetch(`http://localhost:8000/v1/meetings/upload/${apiKey}`, {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        console.log("[MeetInMin] ✅ Upload successful!");
+        return true;
+      }
+
+      const errText = await response.text().catch(() => response.status);
+      console.error(`[MeetInMin] ❌ Backend upload failed (${response.status}):`, errText);
+      return false;
+    } catch (fetchErr) {
+      clearTimeout(timeoutId);
+      if (fetchErr.name === "AbortError") {
+        console.error("[MeetInMin] ❌ Upload timed out after 3 minutes.");
+      } else {
+        console.error("[MeetInMin] ❌ Upload fetch error:", fetchErr);
+      }
+      return false;
+    }
+  } catch (err) {
+    console.error("[MeetInMin] ❌ tryUploadToBackend error:", err);
+    return false;
+  }
 }
 
 async function createRecordingResult(targetRecordingId) {
