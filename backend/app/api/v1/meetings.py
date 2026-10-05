@@ -299,6 +299,34 @@ async def download_meeting_audio(meeting_id: str, current_user: CurrentUser, db:
         media_type="audio/webm"
     )
 
+@router.get("/{meeting_id}/transcript")
+async def download_meeting_transcript(meeting_id: str, current_user: CurrentUser, db: DbSession):
+    """Download the raw transcript text as a .txt file."""
+    from fastapi.responses import PlainTextResponse
+
+    meeting = db.execute(
+        select(Meeting).options(
+            joinedload(Meeting.transcript)
+        ).where(Meeting.id == meeting_id, Meeting.user_id == current_user.id)
+    ).unique().scalar_one_or_none()
+    
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+        
+    if not meeting.transcript or not meeting.transcript.raw_text:
+        raise HTTPException(status_code=404, detail="Transcript not yet available for this meeting")
+
+    safe_title = meeting.title.replace("/", "-").replace("\\", "-")[:80]
+    filename = f"{safe_title}_transcript.txt"
+    
+    return PlainTextResponse(
+        content=meeting.transcript.raw_text,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+    )
+
+
 @router.post("/{meeting_id}/retry")
 async def retry_failed_meeting(
     meeting_id: str, 

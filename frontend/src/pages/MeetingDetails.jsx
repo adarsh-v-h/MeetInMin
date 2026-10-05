@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ChevronLeft, Calendar, Clock, Key, Download, 
-  CheckSquare, FileText, Lightbulb, AlertCircle, RefreshCw, Mail, ExternalLink
+  CheckSquare, FileText, Lightbulb, AlertCircle, Mail, ExternalLink
 } from 'lucide-react';
 
 const getStatusConfig = (status) => {
@@ -47,6 +47,45 @@ const Section = ({ title, icon, children, className = '' }) => (
     </div>
   </div>
 );
+
+// Parse a summary string into an array of clean bullet-point sentences
+const parseSummaryBullets = (text) => {
+  if (!text) return [];
+  // First try splitting on newlines (if GLM returned multi-line)
+  const byNewline = text.split(/\n+/).map(s => s.trim()).filter(Boolean);
+  if (byNewline.length > 1) return byNewline;
+  // Otherwise split on sentence boundaries: '. ', '! ', '? '
+  return text
+    .split(/(?<=[.!?])\s+(?=[A-Z])/) 
+    .map(s => s.trim())
+    .filter(Boolean);
+};
+
+const SummaryBullets = ({ text }) => {
+  const bullets = parseSummaryBullets(text);
+  if (bullets.length <= 1) {
+    // Fallback: just render as-is
+    return <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>{text}</div>;
+  }
+  return (
+    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+      {bullets.map((bullet, i) => (
+        <li key={i} style={{ display: 'flex', gap: '0.65rem', alignItems: 'flex-start' }}>
+          <span style={{
+            flexShrink: 0,
+            marginTop: '0.45rem',
+            width: '6px', height: '6px',
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, #a855f7, #6366f1)',
+            display: 'block',
+          }} />
+          <span style={{ lineHeight: '1.65', color: 'rgba(255,255,255,0.85)' }}>{bullet}</span>
+        </li>
+      ))}
+    </ul>
+  );
+};
+
 
 const ProcessingPlaceholder = ({ text }) => (
   <div style={{ 
@@ -156,6 +195,7 @@ const MeetingDetails = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [downloading, setDownloading] = useState(false);
+  const [downloadingTranscript, setDownloadingTranscript] = useState(false);
 
   const fetchMeeting = useCallback(async () => {
     try {
@@ -200,6 +240,32 @@ const MeetingDetails = () => {
       alert("Could not download audio. The file might be processing or deleted.");
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handleDownloadTranscript = async () => {
+    try {
+      setDownloadingTranscript(true);
+      const response = await fetch(`http://localhost:8000/v1/meetings/${id}/transcript`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (!response.ok) throw new Error('Transcript download failed');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const filenameMatch = disposition.match(/filename="([^"]+)"/);
+      a.download = filenameMatch ? filenameMatch[1] : `meeting_${id}_transcript.txt`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch(err) {
+      alert('Could not download transcript. The transcript may not be available yet.');
+    } finally {
+      setDownloadingTranscript(false);
     }
   };
 
@@ -265,25 +331,44 @@ const MeetingDetails = () => {
           </div>
         </div>
 
-        <button 
-          onClick={handleDownload}
-          disabled={downloading}
-          style={{
-            background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-            borderRadius: '8px', padding: '0.75rem 1.25rem', color: '#fff', fontWeight: '500',
-            display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: downloading ? 'wait' : 'pointer',
-            transition: 'background 0.2s'
-          }}
-          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-        >
-          <Download size={18} />
-          {downloading ? 'Downloading...' : 'Download Audio'}
-        </button>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          {!isProcessing && meeting.transcript && (
+            <button 
+              onClick={handleDownloadTranscript}
+              disabled={downloadingTranscript}
+              style={{
+                background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)',
+                borderRadius: '8px', padding: '0.75rem 1.25rem', color: 'rgba(255,255,255,0.8)', fontWeight: '500',
+                display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: downloadingTranscript ? 'wait' : 'pointer',
+                transition: 'background 0.2s'
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+            >
+              <Download size={16} />
+              {downloadingTranscript ? 'Downloading...' : 'Download Transcript'}
+            </button>
+          )}
+          <button 
+            onClick={handleDownload}
+            disabled={downloading}
+            style={{
+              background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
+              borderRadius: '8px', padding: '0.75rem 1.25rem', color: '#fff', fontWeight: '500',
+              display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: downloading ? 'wait' : 'pointer',
+              transition: 'background 0.2s'
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+          >
+            <Download size={18} />
+            {downloading ? 'Downloading...' : 'Download Audio'}
+          </button>
+        </div>
       </div>
 
       {/* Grid Layout for Insights & Transcript */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 350px', gap: '1.5rem', alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '1.5rem', alignItems: 'start', minWidth: 0 }}>
         
         {/* Left Column: AI Intelligence */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -291,7 +376,7 @@ const MeetingDetails = () => {
           <Section title="Executive Summary" icon={<FileText size={18} color="#a855f7" />}>
             {isProcessing ? <ProcessingPlaceholder text="Generating summary..." /> : 
              !meeting.insight ? <span style={{color: 'rgba(255,255,255,0.4)'}}>No summary available.</span> :
-             <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>{meeting.insight.summary}</div>
+             <SummaryBullets text={meeting.insight.summary} />
             }
           </Section>
 
@@ -352,29 +437,17 @@ const MeetingDetails = () => {
 
         {/* Right Column: Transcript */}
         <Section 
-          title={
-            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-              <span>Raw Transcript</span>
-              {!isProcessing && meeting.transcript && (
-                <button 
-                  onClick={() => navigator.clipboard.writeText(meeting.transcript.raw_text)}
-                  style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '4px', padding: '4px 8px', color: '#fff', fontSize: '0.8rem', cursor: 'pointer' }}
-                >
-                  Copy All
-                </button>
-              )}
-            </div>
-          } 
+          title="Raw Transcript"
           icon={<FileText size={18} />} 
           className="transcript-section"
         >
           <div style={{ 
-            maxHeight: '600px', overflowY: 'auto', paddingRight: '0.5rem',
+            maxHeight: '70vh', overflowY: 'auto', paddingRight: '0.5rem',
             scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.2) transparent'
           }}>
             {isProcessing ? <ProcessingPlaceholder text="Processing transcript..." /> :
              !meeting.transcript ? <span style={{color: 'rgba(255,255,255,0.4)'}}>No transcript available.</span> :
-             <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'system-ui', fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>
+             <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'system-ui', fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)', lineHeight: '1.7' }}>
                {meeting.transcript.raw_text}
              </div>
             }

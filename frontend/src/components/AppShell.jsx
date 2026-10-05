@@ -29,11 +29,10 @@ const AppShell = () => {
       <Sidebar />
       <main style={{ 
         flex: 1, 
-        marginLeft: '260px', // Matches Sidebar width
-        padding: '2rem 3rem',
-        maxWidth: '1200px',
-        margin: '0 auto',
-        paddingLeft: 'calc(260px + 3rem)'
+        minWidth: 0,
+        marginLeft: '260px',
+        padding: '2rem 2.5rem',
+        overflowX: 'hidden',
       }}>
         <Outlet />
       </main>

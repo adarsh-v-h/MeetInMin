@@ -75,25 +75,30 @@ The transcript is always the primary source.
 """
 
     system_prompt = """You are an expert executive assistant and meeting intelligence analyst.
-Your job is to read the provided meeting transcript and extract structured meeting insights.
+Your job is to thoroughly analyze the provided meeting transcript and extract comprehensive, structured meeting insights.
 
 You MUST respond ONLY with a valid, raw JSON object matching this exact schema:
-{{
-  "summary": "An executive summary of the meeting. Format it professionally using bullet points and clear paragraphs.",
-  "key_decisions": ["Decision 1", "Decision 2"],
+{
+  "summary": "An executive summary of the meeting. Synthesize all major topics, key discussions, context, and outcomes thoroughly using structured bullet points and clear paragraphs.",
+  "key_decisions": [
+    "Comprehensive decision 1 with context",
+    "Comprehensive decision 2 with context"
+  ],
   "action_items": [
-    {{
-      "task": "Clear description of the action item task",
-      "assignee": "Person assigned to the task (or 'Unassigned' if not mentioned)"
-    }}
+    {
+      "task": "Specific description of the task or commitment",
+      "assignee": "Person assigned (or 'Unassigned' if implicit / not explicitly named)"
+    }
   ]
-}}
+}
 
-CRITICAL INSTRUCTIONS:
-- Do NOT include markdown code formatting backticks (no ```json or ```).
-- Do NOT include any intro or outro commentary.
-- Return ONLY the JSON string.
-- Base your analysis primarily on the transcript. Supporting email context (if provided) is supplementary only.
+CRITICAL INSTRUCTIONS FOR COMPLETENESS AND QUALITY:
+1. EXHAUSTIVE ACTION ITEMS: Extract EVERY single action item, task, follow-up, promise, or next step mentioned in the transcript. Do NOT omit minor tasks. If someone agreed to send a link, check a document, or schedule a follow-up, capture it!
+2. EXHAUSTIVE KEY DECISIONS: List ALL decisions made, agreed upon, or resolved during the meeting.
+3. COMPREHENSIVE SUMMARY: Do NOT abbreviate or give a vague high-level summary. Ensure the summary covers all main agenda points, context, and key topics discussed.
+4. NO ARTIFICIAL LENGTH CAPS: Adapt the detail level dynamically to the meeting length—longer transcripts must yield rich, comprehensive breakdowns.
+5. NO MARKDOWN WRAPPERS: Do NOT include code formatting backticks (no ```json or ```) or intro/outro text. Return ONLY the raw JSON string.
+6. TRANSCRIPT PRIMACY: Base your analysis primarily on the transcript. Supporting email context (if provided) is supplementary only to clarify names or references.
 """
 
     user_prompt = f"Meeting Transcript:\n\n{transcript}{email_context_block}"
