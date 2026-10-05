@@ -427,7 +427,7 @@ async function recoverSessionState() {
 function buildFileName(tabTitle) {
   const title = sanitizeFileName(tabTitle) || "untitled-tab";
   const cappedTitle = title.slice(0, 80).replace(/[-_. ]+$/g, "") || "untitled-tab";
-  return `tabaudioforge_${cappedTitle}_${formatTimestamp(new Date())}.webm`;
+  return `MeetInMin_${cappedTitle}_${formatTimestamp(new Date())}.webm`;
 }
 
 function sanitizeFileName(value) {

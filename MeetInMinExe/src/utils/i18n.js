@@ -35,7 +35,7 @@ const FALLBACK_MESSAGES = {
   errorUnknownMessageType: "Unknown message type: $1",
   errorUnknownOffscreenMessageType: "Unknown offscreen message type: $1",
   permissionTitle: "Microphone Permission Required",
-  permissionText: "To record your microphone, TabAudio Forge needs your permission. Please click the button below and select 'Allow' in the browser prompt.",
+  permissionText: "To record your microphone, MeetInMin needs your permission. Please click the button below and select 'Allow' in the browser prompt.",
   permissionButton: "Grant Microphone Permission",
   permissionGranted: "Permission granted! You can now close this tab and start recording from the extension popup.",
   permissionDenied: "Permission denied. Please check your browser settings.",

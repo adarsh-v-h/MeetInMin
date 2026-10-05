@@ -1,6 +1,6 @@
 const TIMESLICE_MS = 2000;
 const MIME_CANDIDATES = ["audio/webm;codecs=opus", "audio/webm"];
-const DB_NAME = "tabaudioforge";
+const DB_NAME = "meetinmin";
 const DB_VERSION = 1;
 const CHUNK_STORE = "chunks";
 const RECORDING_STORE = "recordings";
@@ -321,7 +321,7 @@ async function finalizeRecoveredRecording(targetRecordingId) {
     bytes,
     chunks: chunkCount,
     mimeType: meta.mimeType || "",
-    filename: meta.filename || "tabaudioforge_recovered.webm",
+    filename: meta.filename || "MeetInMin_recovered.webm",
     error: "",
   });
 
@@ -691,7 +691,7 @@ async function recoverStoredRecording() {
     bytes,
     chunks: chunkCount,
     mimeType: recovered.mimeType || "",
-    filename: recovered.filename || "tabaudioforge_recovered.webm",
+    filename: recovered.filename || "MeetInMin_recovered.webm",
     error: "",
   });
   await sendToWorker("RECOVERED_RECORDING", { recordingId, status }).catch(() => {});
