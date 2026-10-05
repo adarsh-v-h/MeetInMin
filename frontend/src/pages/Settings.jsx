@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { User, Mail, Link as LinkIcon, Unlink, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { User, Mail, Link as LinkIcon, Unlink, AlertTriangle, CheckCircle2, Download, Puzzle } from 'lucide-react';
 
 const Settings = () => {
   const [profile, setProfile] = useState(null);
@@ -162,6 +162,47 @@ const Settings = () => {
             </button>
           </div>
         )}
+      </div>
+
+      {/* Chrome Extension Section */}
+      <div style={{
+        background: 'rgba(255, 255, 255, 0.03)',
+        border: '1px solid rgba(255, 255, 255, 0.1)',
+        borderRadius: '16px',
+        padding: '2rem',
+        backdropFilter: 'blur(10px)'
+      }}>
+        <h2 style={{ fontSize: '1.25rem', color: '#fff', margin: '0 0 1.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Puzzle size={20} color="#6366f1" /> Chrome Extension
+        </h2>
+        
+        <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.95rem', lineHeight: '1.5', marginBottom: '1.5rem' }}>
+          The MeetInMin Chrome extension silently records meeting audio from your browser tab without any bots. Download the extension ZIP and install it in Chrome via Developer Mode (<code style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: '4px', color: '#a5b4fc' }}>chrome://extensions</code>).
+        </p>
+
+        <div style={{ 
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem',
+          background: 'rgba(99, 102, 241, 0.05)', border: '1px solid rgba(99, 102, 241, 0.2)',
+          padding: '1.5rem', borderRadius: '12px' 
+        }}>
+          <div>
+            <div style={{ color: '#fff', fontWeight: '600', marginBottom: '4px' }}>MeetInMin Chrome Extension (v0.1.0)</div>
+            <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.9rem' }}>ZIP package ready for developer mode installation.</div>
+          </div>
+          <a 
+            href="/MeetInMin-Extension.zip" 
+            download="MeetInMin-Extension.zip"
+            style={{
+              background: '#6366f1', border: 'none', borderRadius: '8px',
+              padding: '0.75rem 1.5rem', color: '#fff', fontWeight: '600', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none', transition: 'opacity 0.2s'
+            }}
+            onMouseEnter={e => { e.currentTarget.style.opacity = '0.9'; }}
+            onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
+          >
+            <Download size={16} /> Download Extension
+          </a>
+        </div>
       </div>
 
       {/* DISCONNECT CONFIRMATION MODAL */}
