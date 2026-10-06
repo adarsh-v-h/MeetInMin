@@ -25,8 +25,9 @@ const formatDate = (dateString) => {
   if (!dateStr.endsWith('Z') && !dateStr.includes('+') && !dateStr.includes('-')) {
     dateStr += 'Z';
   }
-  return new Date(dateStr).toLocaleString('en-US', {
-    month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'
+  return new Date(dateStr).toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
   });
 };
 

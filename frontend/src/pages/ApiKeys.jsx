@@ -3,7 +3,14 @@ import { Key, Plus, MoreVertical, Copy, Check, AlertTriangle, ShieldOff, Activit
 
 const formatDate = (dateString) => {
   if (!dateString) return 'Never';
-  return new Date(dateString).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  let dateStr = String(dateString);
+  if (!dateStr.endsWith('Z') && !dateStr.includes('+') && !dateStr.includes('-')) {
+    dateStr += 'Z';
+  }
+  return new Date(dateStr).toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
+  });
 };
 
 const ApiKeys = () => {
