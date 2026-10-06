@@ -149,6 +149,13 @@ MeetInMin uses Zoho GLM (`crm-di-glm47b_30b_it`) to transform unstructured trans
 
 ---
 
+### 6. Provider-Agnostic AI Service Layer
+Although MeetInMin ships configured for **Zoho Zia STT** and **Zoho GLM**, the AI pipeline layer (`app/services/zoho/glm.py` and `app/services/zoho/stt.py`) is fully decoupled:
+* **Custom LLM Providers**: Replace headers and POST payload structures in `analyze_transcript_with_zoho_glm()` to target Google Gemini (`https://generativelanguage.googleapis.com/...`), OpenAI GPT-4o, Anthropic Claude, or local Ollama endpoints while retaining Pydantic validation.
+* **Custom STT Providers**: Replace `_transcribe_single_wav_file()` in `stt.py` to route WAV audio chunks to OpenAI Whisper, Deepgram, or AssemblyAI.
+
+---
+
 ## 🗄️ Database Schema & ER Diagram
 
 ```mermaid

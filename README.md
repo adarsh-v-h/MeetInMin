@@ -1,6 +1,6 @@
 # 🎙️ MeetInMin
 
-**MeetInMin** is an invisible, AI-powered meeting intelligence assistant. It silently captures audio directly from your browser tab during meetings (Google Meet, Zoom, Teams, or video streams) without requiring any awkward AI bots to join your calls. It transcribes audio using **Zoho Zia Speech-to-Text**, extracts key decisions and action items using **Zoho GLM**, and optionally enriches insights with context from your **Gmail inbox**.
+**MeetInMin** is an invisible, AI-powered meeting intelligence assistant. It silently captures audio directly from your browser tab during meetings (Google Meet, Zoom, Teams, or video streams, anything on a web browser we can take it) without requiring any awkward AI bots to join your calls. It transcribes audio using **Zoho Zia Speech-to-Text**, extracts key decisions and action items using **Zoho GLM**, and optionally enriches insights with context from your **Gmail inbox**.
 
 ---
 
@@ -82,6 +82,29 @@ CATALYST_PROJECT_ID=your-zoho-project-id
 CATALYST_BASE_URL=https://api.catalyst.zoho.in
 ZOHO_GLM_MODEL=crm-di-glm47b_30b_it
 ```
+
+---
+
+## 🔌 Custom Model Setup & Flexibility (Swapping STT / LLM)
+
+> [!NOTE]
+> MeetInMin comes configured with **Zoho Catalyst (Zia STT + Zoho GLM)** by default. However, the system architecture is **provider-agnostic**. You can easily swap out Zoho with any AI provider of your choice (e.g., Google Gemini, OpenAI Whisper / GPT-4, Anthropic, or self-hosted models).
+
+### How to Replace Endpoints & Headers:
+
+1. **Configure Environment Variables (`.env`)**:
+   - Update `QUICKML_LLM_URL` and `ZIA_STT_URL` in `backend/.env` with your custom provider's API endpoints.
+   - Or add your provider's API key (e.g. `GEMINI_API_KEY=your-gemini-key` from [Google AI Studio](https://aistudio.google.com/)).
+
+2. **Update Service Code Files**:
+   - **Language Model / Analysis Engine**: Located in [app/services/zoho/glm.py](file:///home/venzz/Work/Projects/MeetInMin/backend/app/services/zoho/glm.py). Update the Authorization headers (`Authorization: Bearer YOUR_API_KEY`) and request body format around lines 120-135 to match your preferred LLM provider while keeping the structured JSON system prompt intact.
+   - **Speech-to-Text Engine**: Located in [app/services/zoho/stt.py](file:///home/venzz/Work/Projects/MeetInMin/backend/app/services/zoho/stt.py). Update `_transcribe_single_wav_file()` headers and multipart file payload around lines 75-100 to point to your preferred STT service (e.g. OpenAI Whisper or Google Speech-to-Text).
+
+### Example: Switching to Google Gemini
+If you prefer to use **Google Gemini** for LLM analysis:
+1. Obtain a Gemini API key from [Google AI Studio](https://aistudio.google.com/).
+2. Add `GEMINI_API_KEY=your_key_here` to `backend/.env`.
+3. In [app/services/zoho/glm.py](file:///home/venzz/Work/Projects/MeetInMin/backend/app/services/zoho/glm.py), update `analyze_transcript_with_zoho_glm()` to send requests to Gemini (`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`) or via official SDK, preserving the structured JSON prompt.
 
 ---
 
