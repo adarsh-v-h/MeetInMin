@@ -59,8 +59,8 @@ function init() {
     
     if (!formattedKeys.find(k => k.key === val)) {
       formattedKeys.push({ name: nameVal, key: val });
-      await chrome.storage.local.set({ apiKeys: formattedKeys, activeApiKey: val });
     }
+    await chrome.storage.local.set({ apiKeys: formattedKeys, activeApiKey: val });
     elements.newApiKeyInput.value = "";
     elements.newApiKeyNameInput.value = "";
     await loadApiKeys();
@@ -73,6 +73,9 @@ function init() {
 }
 
 async function handleStart() {
+  const selectedApiKey = elements.apiKeySelect ? elements.apiKeySelect.value : "";
+  await chrome.storage.local.set({ activeApiKey: selectedApiKey });
+
   const includeMic = document.querySelector("#micCheckbox").checked;
   
   if (includeMic) {
