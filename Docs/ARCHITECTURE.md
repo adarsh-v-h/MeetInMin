@@ -49,7 +49,7 @@ graph TB
 |---|---|---|
 | **Backend Framework** | FastAPI (Python 3.11+) | High-performance asynchronous REST API server |
 | **Package Manager** | `uv` (Astral) | Lightning-fast Python dependency management |
-| **Database & ORM** | SQLAlchemy 2.0 + SQLite / PostgreSQL | Async-compatible ORM with strict model validation |
+| **Database & ORM** | SQLAlchemy 2.0 + SQLite(for MVP we have kept SQLite itself) / PostgreSQL | Async-compatible ORM with strict model validation |
 | **Audio Processing** | `pydub` + `ffmpeg` | Audio conversion to 16kHz mono WAV & 4-min chunk splitting |
 | **STT Engine** | Zoho Zia Speech-to-Text (`/quickml/.../transcribe`) | High-accuracy Speech-to-Text API |
 | **LLM Engine** | Zoho GLM (`crm-di-glm47b_30b_it`) | Executive summary, key decision & action item extraction |

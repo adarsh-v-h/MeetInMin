@@ -85,29 +85,6 @@ ZOHO_GLM_MODEL=crm-di-glm47b_30b_it
 
 ---
 
-## 🔌 Custom Model Setup & Flexibility (Swapping STT / LLM)
-
-> [!NOTE]
-> MeetInMin comes configured with **Zoho Catalyst (Zia STT + Zoho GLM)** by default. However, the system architecture is **provider-agnostic**. You can easily swap out Zoho with any AI provider of your choice (e.g., Google Gemini, OpenAI Whisper / GPT-4, Anthropic, or self-hosted models).
-
-### How to Replace Endpoints & Headers:
-
-1. **Configure Environment Variables (`.env`)**:
-   - Update `QUICKML_LLM_URL` and `ZIA_STT_URL` in `backend/.env` with your custom provider's API endpoints.
-   - Or add your provider's API key (e.g. `GEMINI_API_KEY=your-gemini-key` from [Google AI Studio](https://aistudio.google.com/)).
-
-2. **Update Service Code Files**:
-   - **Language Model / Analysis Engine**: Located in [app/services/zoho/glm.py](file:///home/venzz/Work/Projects/MeetInMin/backend/app/services/zoho/glm.py). Update the Authorization headers (`Authorization: Bearer YOUR_API_KEY`) and request body format around lines 120-135 to match your preferred LLM provider while keeping the structured JSON system prompt intact.
-   - **Speech-to-Text Engine**: Located in [app/services/zoho/stt.py](file:///home/venzz/Work/Projects/MeetInMin/backend/app/services/zoho/stt.py). Update `_transcribe_single_wav_file()` headers and multipart file payload around lines 75-100 to point to your preferred STT service (e.g. OpenAI Whisper or Google Speech-to-Text).
-
-### Example: Switching to Google Gemini
-If you prefer to use **Google Gemini** for LLM analysis:
-1. Obtain a Gemini API key from [Google AI Studio](https://aistudio.google.com/).
-2. Add `GEMINI_API_KEY=your_key_here` to `backend/.env`.
-3. In [app/services/zoho/glm.py](file:///home/venzz/Work/Projects/MeetInMin/backend/app/services/zoho/glm.py), update `analyze_transcript_with_zoho_glm()` to send requests to Gemini (`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`) or via official SDK, preserving the structured JSON prompt.
-
----
-
 ## 💻 Running the Application
 
 ### 1. Start the Backend API
@@ -159,7 +136,6 @@ npm run dev
 ## 📖 Additional Documentation & Resources
 
 - 🏗️ **Technical Architecture**: See [ARCHITECTURE.md](file:///home/venzz/Work/Projects/MeetInMin/Docs/ARCHITECTURE.md) for full developer diagrams, data pipelines, STT chunking mechanics, and DB schemas.
-- 🎬 **Video Demo Plan**: See [demo_walkthrough_plan.md](file:///home/venzz/.gemini/antigravity-ide/brain/e6964f4c-5135-401e-a73f-99fad5b22ca2/demo_walkthrough_plan.md) for a step-by-step video script and demonstration guide.
 
 ---
 
