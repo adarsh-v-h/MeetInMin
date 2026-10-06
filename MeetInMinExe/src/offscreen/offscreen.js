@@ -21,6 +21,7 @@ let progressTimer = null;
 let currentObjectUrl = "";
 let dbPromise = null;
 
+// Status object tracking current recording state
 let status = {
   state: "idle",
   durationMs: 0,
@@ -30,8 +31,6 @@ let status = {
   filename: "",
   error: "",
 };
-
-recoverStoredRecording().catch(() => {});
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || message.target !== "offscreen") {
