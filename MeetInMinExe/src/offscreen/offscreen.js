@@ -86,10 +86,14 @@ async function handleMessage(message) {
   }
 }
 
-async function startRecording({ streamId, filename, recordMic }) {
+let activeApiKey = "";
+
+async function startRecording({ streamId, filename, recordMic, apiKey }) {
   if (status.state === "recording" || status.state === "paused") {
     throw new Error(t("errorRecordingAlreadyRunning"));
   }
+
+  activeApiKey = apiKey || "";
 
   const mimeType = chooseMimeType();
   if (!mimeType) {
@@ -355,8 +359,15 @@ async function finalizeRecoveredRecording(targetRecordingId) {
  */
 async function tryUploadToBackend(blob, filename) {
   try {
-    const storage = await chrome.storage.local.get("activeApiKey");
-    const apiKey = storage.activeApiKey;
+    let apiKey = activeApiKey;
+    if (!apiKey) {
+      try {
+        const keyRes = await sendToWorker("GET_API_KEY", {});
+        apiKey = keyRes?.apiKey || "";
+      } catch (err) {
+        console.warn("[MeetInMin] Failed to query worker for API key:", err);
+      }
+    }
     console.log("[MeetInMin] Active API Key for upload:", apiKey ? `(key present: ${apiKey.slice(0, 8)}...)` : "NONE (empty)");
 
     if (!apiKey) {

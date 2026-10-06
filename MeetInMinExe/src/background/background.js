@@ -117,6 +117,10 @@ async function handleWorkerMessage(message) {
       return { status: await handleRecoveredRecording(message) };
     case "DOWNLOAD_LOCAL":
       return { status: await triggerLocalDownload() };
+    case "GET_API_KEY": {
+      const storage = await chrome.storage.local.get("activeApiKey");
+      return { apiKey: storage.activeApiKey || "" };
+    }
     case "RECORDING_ERROR":
       await setStatus({ state: "error", error: message.error || t("errorRecordingFailed") });
       broadcast({ type: "RECORDING_ERROR", status, error: status.error });
@@ -179,11 +183,15 @@ async function startRecording(message) {
     const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
     const filename = buildFileName(tab.title || "untitled-tab");
 
+    const storage = await chrome.storage.local.get("activeApiKey");
+    const apiKey = storage.activeApiKey || "";
+
     const response = await sendToOffscreen("OFFSCREEN_START", {
       streamId,
       filename,
       tabId: tab.id,
       recordMic: message?.recordMic === true,
+      apiKey: apiKey,
     });
 
     await setStatus(response.status || { state: "recording", filename });
