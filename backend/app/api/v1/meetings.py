@@ -196,13 +196,17 @@ async def upload_meeting_audio(
         while content := await file.read(1024 * 1024):  # 1MB chunk size
             await out_file.write(content)
         
+    from datetime import datetime, timezone
+    now_utc = datetime.now(timezone.utc)
+
     # Create the Meeting record in the DB first
     new_meeting = Meeting(
         user_id=user.id,
         api_key_id=api_key_record.id,
-        title=f"Meeting on {time.strftime('%b %d, %Y')}",
+        title=f"Meeting on {now_utc.strftime('%b %d, %Y')}",
         audio_file_path=file_path,
-        status="uploaded"
+        status="uploaded",
+        created_at=now_utc,
     )
     db.add(new_meeting)
     db.commit()
