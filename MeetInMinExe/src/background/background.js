@@ -208,6 +208,12 @@ async function forwardControl(type) {
 }
 
 async function handleRecordingComplete(message) {
+  console.log("[MeetInMin] RECORDING_COMPLETE message received in worker:", {
+    uploaded: message.uploaded,
+    hadApiKey: message.hadApiKey,
+    uploadError: message.uploadError,
+  });
+
   if (!message.url && !message.uploaded) {
     throw new Error(t("errorRecordingNoFile"));
   }

@@ -357,9 +357,11 @@ async function tryUploadToBackend(blob, filename) {
   try {
     const storage = await chrome.storage.local.get("activeApiKey");
     const apiKey = storage.activeApiKey;
+    console.log("[MeetInMin] Active API Key for upload:", apiKey ? `(key present: ${apiKey.slice(0, 8)}...)` : "NONE (empty)");
+
     if (!apiKey) {
-      console.log("[MeetInMin] No API key configured — skipping backend upload.");
-      return { success: false, hadApiKey: false };
+      console.warn("[MeetInMin] ⚠️ No active API key selected in extension storage — skipping backend upload.");
+      return { success: false, hadApiKey: false, error: "No API key selected in extension dropdown" };
     }
 
     const formData = new FormData();
@@ -370,7 +372,7 @@ async function tryUploadToBackend(blob, filename) {
     const timeoutId = setTimeout(() => controller.abort(), 3 * 60 * 1000);
 
     try {
-      console.log(`[MeetInMin] Uploading ${(blob.size / 1024 / 1024).toFixed(1)} MB to backend...`);
+      console.log(`[MeetInMin] Uploading ${(blob.size / 1024 / 1024).toFixed(2)} MB to backend (http://localhost:8000/v1/meetings/upload/${apiKey.slice(0, 8)}...)...`);
       const response = await fetch(`http://localhost:8000/v1/meetings/upload/${apiKey}`, {
         method: "POST",
         body: formData,
@@ -379,12 +381,12 @@ async function tryUploadToBackend(blob, filename) {
       clearTimeout(timeoutId);
 
       if (response.ok) {
-        console.log("[MeetInMin] ✅ Upload successful!");
+        console.log("[MeetInMin] ✅ Backend Upload Successful!");
         return { success: true, hadApiKey: true };
       }
 
       const errText = await response.text().catch(() => response.status);
-      console.error(`[MeetInMin] ❌ Backend upload failed (${response.status}):`, errText);
+      console.error(`[MeetInMin] ❌ Backend upload failed (HTTP ${response.status}):`, errText);
       return { success: false, hadApiKey: true, error: `HTTP ${response.status}: ${errText}` };
     } catch (fetchErr) {
       clearTimeout(timeoutId);
@@ -392,12 +394,12 @@ async function tryUploadToBackend(blob, filename) {
         console.error("[MeetInMin] ❌ Upload timed out after 3 minutes.");
         return { success: false, hadApiKey: true, error: "Upload timed out after 3 minutes." };
       } else {
-        console.error("[MeetInMin] ❌ Upload fetch error:", fetchErr);
-        return { success: false, hadApiKey: true, error: fetchErr.message };
+        console.error("[MeetInMin] ❌ Upload fetch exception:", fetchErr);
+        return { success: false, hadApiKey: true, error: `Network error: ${fetchErr.message}` };
       }
     }
   } catch (err) {
-    console.error("[MeetInMin] ❌ tryUploadToBackend error:", err);
+    console.error("[MeetInMin] ❌ tryUploadToBackend top-level error:", err);
     return { success: false, hadApiKey: false, error: err.message };
   }
 }
