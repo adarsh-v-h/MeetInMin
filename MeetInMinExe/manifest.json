@@ -12,6 +12,10 @@
     "128": "icons/icon128.png"
   },
   "permissions": ["tabCapture", "offscreen", "downloads", "activeTab", "storage", "alarms"],
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*"
+  ],
   "action": {
     "default_popup": "src/popup/popup.html",
     "default_title": "__MSG_extensionName__",

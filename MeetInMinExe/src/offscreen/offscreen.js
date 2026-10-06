@@ -222,32 +222,18 @@ async function finalizeRecording() {
     currentObjectUrl = URL.createObjectURL(blob);
 
     // Attempt upload directly from offscreen where the Blob is alive.
-    const uploaded = await tryUploadToBackend(blob, status.filename);
+    const uploadRes = await tryUploadToBackend(blob, status.filename);
 
-    let result;
-    if (uploaded) {
-      // Upload succeeded — clean up IndexedDB chunks
-      await deleteRecordingData(recordingId);
-      recordingId = "";
-      result = {
-        uploaded: true,
-        url: currentObjectUrl,
-        filename: status.filename,
-        bytes: blob.size,
-        durationMs: status.durationMs,
-        status: { ...status, state: "completed", bytes: blob.size },
-      };
-    } else {
-      // Upload failed — keep in IndexedDB for retry queue, provide local URL for download
-      result = {
-        uploaded: false,
-        url: currentObjectUrl,
-        filename: status.filename,
-        bytes: blob.size,
-        durationMs: status.durationMs,
-        status: { ...status, state: "completed", bytes: blob.size },
-      };
-    }
+    const result = {
+      uploaded: uploadRes.success,
+      hadApiKey: uploadRes.hadApiKey,
+      uploadError: uploadRes.error || "",
+      url: currentObjectUrl,
+      filename: status.filename,
+      bytes: blob.size,
+      durationMs: status.durationMs,
+      status: { ...status, state: "completed", bytes: blob.size },
+    };
 
     await sendToWorker("RECORDING_COMPLETE", result);
   } catch (error) {
@@ -270,12 +256,14 @@ async function getOrCreateBlobUrl() {
   }
   const recordings = await getStoredRecordings();
   if (recordings.length > 0) {
-    const rec = recordings[0];
-    const chunkBlobs = await readRecordingChunks(rec.recordingId);
-    if (chunkBlobs.length > 0) {
-      const blob = new Blob(chunkBlobs, { type: rec.mimeType || "audio/webm" });
-      currentObjectUrl = URL.createObjectURL(blob);
-      return currentObjectUrl;
+    const sorted = recordings.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    for (const rec of sorted) {
+      const chunkBlobs = await readRecordingChunks(rec.recordingId);
+      if (chunkBlobs.length > 0) {
+        const blob = new Blob(chunkBlobs, { type: rec.mimeType || status.mimeType || "audio/webm" });
+        currentObjectUrl = URL.createObjectURL(blob);
+        return currentObjectUrl;
+      }
     }
   }
   return "";
@@ -371,7 +359,7 @@ async function tryUploadToBackend(blob, filename) {
     const apiKey = storage.activeApiKey;
     if (!apiKey) {
       console.log("[MeetInMin] No API key configured — skipping backend upload.");
-      return false;
+      return { success: false, hadApiKey: false };
     }
 
     const formData = new FormData();
@@ -392,24 +380,25 @@ async function tryUploadToBackend(blob, filename) {
 
       if (response.ok) {
         console.log("[MeetInMin] ✅ Upload successful!");
-        return true;
+        return { success: true, hadApiKey: true };
       }
 
       const errText = await response.text().catch(() => response.status);
       console.error(`[MeetInMin] ❌ Backend upload failed (${response.status}):`, errText);
-      return false;
+      return { success: false, hadApiKey: true, error: `HTTP ${response.status}: ${errText}` };
     } catch (fetchErr) {
       clearTimeout(timeoutId);
       if (fetchErr.name === "AbortError") {
         console.error("[MeetInMin] ❌ Upload timed out after 3 minutes.");
+        return { success: false, hadApiKey: true, error: "Upload timed out after 3 minutes." };
       } else {
         console.error("[MeetInMin] ❌ Upload fetch error:", fetchErr);
+        return { success: false, hadApiKey: true, error: fetchErr.message };
       }
-      return false;
     }
   } catch (err) {
     console.error("[MeetInMin] ❌ tryUploadToBackend error:", err);
-    return false;
+    return { success: false, hadApiKey: false, error: err.message };
   }
 }
 
@@ -543,42 +532,84 @@ function revokeObjectUrl(url) {
 }
 
 async function openDb() {
-  if (!dbPromise) {
-    dbPromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-      request.onupgradeneeded = () => {
-        const db = request.result;
-        if (!db.objectStoreNames.contains(CHUNK_STORE)) {
-          const chunkStore = db.createObjectStore(CHUNK_STORE, { keyPath: "id", autoIncrement: true });
-          chunkStore.createIndex("recordingId", "recordingId", { unique: false });
-        }
-
-        if (!db.objectStoreNames.contains(RECORDING_STORE)) {
-          db.createObjectStore(RECORDING_STORE, { keyPath: "recordingId" });
-        }
-      };
-
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
+  if (dbPromise) {
+    try {
+      const db = await dbPromise;
+      if (db && !db.closing) {
+        return db;
+      }
+    } catch {
+      // Stale or failed db connection promise
+    }
+    dbPromise = null;
   }
+
+  dbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(CHUNK_STORE)) {
+        const chunkStore = db.createObjectStore(CHUNK_STORE, { keyPath: "id", autoIncrement: true });
+        chunkStore.createIndex("recordingId", "recordingId", { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains(RECORDING_STORE)) {
+        db.createObjectStore(RECORDING_STORE, { keyPath: "recordingId" });
+      }
+    };
+
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onclose = () => {
+        dbPromise = null;
+      };
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
+    };
+
+    request.onerror = () => {
+      dbPromise = null;
+      reject(request.error);
+    };
+  });
 
   return dbPromise;
 }
 
 async function withStore(storeNames, mode, callback) {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(storeNames, mode);
-    let result;
+  try {
+    const db = await openDb();
+    return await new Promise((resolve, reject) => {
+      const transaction = db.transaction(storeNames, mode);
+      let result;
 
-    transaction.oncomplete = () => resolve(result);
-    transaction.onerror = () => reject(transaction.error);
-    transaction.onabort = () => reject(transaction.error);
+      transaction.oncomplete = () => resolve(result);
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
 
-    result = callback(transaction);
-  });
+      result = callback(transaction);
+    });
+  } catch (err) {
+    if (err?.name === "InvalidStateError" || err?.message?.includes("closing")) {
+      dbPromise = null;
+      const db = await openDb();
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction(storeNames, mode);
+        let result;
+
+        transaction.oncomplete = () => resolve(result);
+        transaction.onerror = () => reject(transaction.error);
+        transaction.onabort = () => reject(transaction.error);
+
+        result = callback(transaction);
+      });
+    }
+    throw err;
+  }
 }
 
 async function putChunk(chunk) {

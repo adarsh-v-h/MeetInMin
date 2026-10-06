@@ -127,17 +127,18 @@ async function handleWorkerMessage(message) {
 }
 
 async function triggerLocalDownload() {
-  if (await hasOffscreenDocument()) {
-    const res = await sendToOffscreen("OFFSCREEN_GET_BLOB_URL", {});
-    const url = res.url || pendingObjectUrl;
-    if (url) {
-      const downloadId = await chrome.downloads.download({
-        url: url,
-        filename: status.filename || "meeting_recording.webm",
-        saveAs: true,
-      });
-      await setSessionFields({ activeDownloadId: downloadId });
-    }
+  await ensureOffscreenDocument();
+  const res = await sendToOffscreen("OFFSCREEN_GET_BLOB_URL", {});
+  const url = res.url || pendingObjectUrl;
+  if (url) {
+    const downloadId = await chrome.downloads.download({
+      url: url,
+      filename: status.filename || `MeetInMin_recording_${Date.now()}.webm`,
+      saveAs: false,
+    });
+    await setSessionFields({ activeDownloadId: downloadId });
+  } else {
+    throw new Error(t("errorRecordingNoFile"));
   }
   return status;
 }
@@ -166,6 +167,8 @@ async function startRecording(message) {
     mimeType: "",
     filename: "",
     error: "",
+    uploadedToBackend: false,
+    uploadFailed: false,
   });
   broadcast({ type: "STATUS_UPDATE", status });
 
@@ -216,14 +219,15 @@ async function handleRecordingComplete(message) {
     filename: message.filename || status.filename,
     durationMs: message.durationMs ?? status.durationMs,
     bytes: message.bytes ?? status.bytes,
+    uploadedToBackend: !!message.uploaded,
+    uploadFailed: !message.uploaded && message.hadApiKey === true,
   });
   broadcast({ type: "STATUS_UPDATE", status });
 
   try {
     if (message.uploaded) {
-      // Upload was already completed from the offscreen document. Nothing more to do.
-      await cleanupAfterDownload();
-      await setStatus({ state: "completed" });
+      // Upload was already completed from the offscreen document.
+      await setStatus({ state: "completed", uploadedToBackend: true, uploadFailed: false });
       broadcast({ type: "STATUS_UPDATE", status });
     } else {
       // Upload was not possible (no API key or upload failed) — fall back to local download.
@@ -234,7 +238,13 @@ async function handleRecordingComplete(message) {
         saveAs: false,
       });
       await setSessionFields({ activeDownloadId: downloadId });
-      // Keep the offscreen document alive until Chrome's download system has read the blob URL.
+      await setStatus({
+        state: "completed",
+        uploadedToBackend: false,
+        uploadFailed: message.hadApiKey === true,
+      });
+      broadcast({ type: "STATUS_UPDATE", status });
+      // Keep offscreen document alive for a while so download finishes safely
       await chrome.alarms.create(CLEANUP_ALARM_NAME, { when: Date.now() + CLEANUP_DELAY_MS });
     }
   } catch (error) {
@@ -288,11 +298,17 @@ async function ensureOffscreenDocument() {
     return;
   }
 
-  await chrome.offscreen.createDocument({
-    url: OFFSCREEN_DOCUMENT,
-    reasons: ["USER_MEDIA"],
-    justification: "Record audio from the active browser tab.",
-  });
+  try {
+    await chrome.offscreen.createDocument({
+      url: OFFSCREEN_DOCUMENT,
+      reasons: ["USER_MEDIA"],
+      justification: "Record audio from the active browser tab.",
+    });
+  } catch (err) {
+    if (!err.message?.includes("already exists") && !err.message?.includes("Only a single offscreen document")) {
+      throw err;
+    }
+  }
 }
 
 async function hasOffscreenDocument() {

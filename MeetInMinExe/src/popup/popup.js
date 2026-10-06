@@ -135,8 +135,16 @@ function renderStatus(status) {
     elements.messageText.textContent = t("statusUploadingSafetyNotice");
     elements.messageText.style.color = "#3b82f6";
   } else if (currentStatus.state === "completed" && currentStatus.bytes > 0) {
-    elements.messageText.textContent = t("statusUploadSuccessNotice");
-    elements.messageText.style.color = "#10b981";
+    if (currentStatus.uploadedToBackend) {
+      elements.messageText.textContent = t("statusUploadSuccessNotice");
+      elements.messageText.style.color = "#10b981";
+    } else if (currentStatus.uploadFailed) {
+      elements.messageText.textContent = t("statusUploadFailedNotice");
+      elements.messageText.style.color = "#f59e0b";
+    } else {
+      elements.messageText.textContent = t("statusSavedLocallyNotice");
+      elements.messageText.style.color = "#3b82f6";
+    }
   } else {
     elements.messageText.textContent = "";
   }
@@ -254,7 +262,7 @@ function formatBytes(bytes) {
 }
 
 function localizeDocument() {
-  document.documentElement.lang = chrome.i18n.getUILanguage?.() || navigator.language || "en";
+  document.documentElement.lang = chrome.i18n?.getUILanguage?.() || navigator.language || "en";
   document.title = t("extensionName");
 
   document.querySelectorAll("[data-i18n]").forEach((node) => {
@@ -270,18 +278,23 @@ function localizeDocument() {
 async function loadApiKeys() {
   const data = await chrome.storage.local.get(["apiKeys", "activeApiKey"]);
   const keys = data.apiKeys || [];
-  const activeKey = data.activeApiKey || "";
+  let activeKey = data.activeApiKey || "";
+
+  // Auto-select the first API key if keys exist but activeApiKey isn't set yet
+  if (keys.length > 0 && !activeKey) {
+    activeKey = typeof keys[0] === "string" ? keys[0] : keys[0].key;
+    await chrome.storage.local.set({ activeApiKey: activeKey });
+  }
   
   elements.apiKeySelect.innerHTML = '<option value="">Save locally (Downloads folder)</option>';
   keys.forEach(k => {
-    // Support old string format
     const keyString = typeof k === "string" ? k : k.key;
     const keyName = typeof k === "string" ? "API Key" : k.name;
     
     const opt = document.createElement("option");
     opt.value = keyString;
     
-    const maskedKey = "************" + keyString.slice(-4);
+    const maskedKey = "************" + (keyString.length >= 4 ? keyString.slice(-4) : keyString);
     opt.textContent = `${keyName} - ${maskedKey}`;
     if (keyString === activeKey) opt.selected = true;
     elements.apiKeySelect.appendChild(opt);

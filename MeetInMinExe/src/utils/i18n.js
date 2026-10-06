@@ -1,6 +1,6 @@
 const FALLBACK_MESSAGES = {
   extensionName: "MeetInMin",
-  extensionDescription: "Record audio from the active browser tab and save it locally.",
+  extensionDescription: "Record audio from the active browser tab and save it locally or upload to MeetInMin.",
   subtitle: "Record current tab audio",
   labelStatus: "Status",
   labelDuration: "Duration",
@@ -11,13 +11,19 @@ const FALLBACK_MESSAGES = {
   buttonPause: "Pause",
   buttonResume: "Resume",
   buttonStop: "Stop",
+  buttonDownloadLocal: "Download Local Copy",
   statusIdle: "Idle",
   statusPreparing: "Capturing tab...",
   statusRecording: "Recording $1",
   statusPaused: "Paused",
-  statusSaving: "Saving...",
+  statusSaving: "Saving / Uploading...",
+  statusUploading: "Uploading...",
   statusCompleted: "Done",
   statusError: "Error",
+  statusUploadingSafetyNotice: "Uploading recording to MeetInMin...",
+  statusUploadSuccessNotice: "Uploaded to MeetInMin successfully!",
+  statusSavedLocallyNotice: "Saved to Downloads folder.",
+  statusUploadFailedNotice: "Backend upload failed — saved copy to Downloads folder.",
   formatOpusWebm: "Opus (webm)",
   formatWebm: "WebM",
   errorCommandFailed: "Command failed.",
@@ -44,7 +50,7 @@ const FALLBACK_MESSAGES = {
 };
 
 function t(key, substitutions) {
-  return chrome.i18n.getMessage(key, substitutions) || formatFallbackMessage(key, substitutions);
+  return chrome?.i18n?.getMessage?.(key, substitutions) || formatFallbackMessage(key, substitutions);
 }
 
 function formatFallbackMessage(key, substitutions) {

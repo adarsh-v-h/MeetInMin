@@ -1,5 +1,5 @@
 document.addEventListener("DOMContentLoaded", () => {
-  document.documentElement.lang = chrome.i18n.getUILanguage?.() || navigator.language || "en";
+  document.documentElement.lang = chrome.i18n?.getUILanguage?.() || navigator.language || "en";
   document.title = t("permissionTitle");
 
   document.querySelectorAll("[data-i18n]").forEach((node) => {
