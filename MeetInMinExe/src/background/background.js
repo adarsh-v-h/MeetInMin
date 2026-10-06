@@ -221,13 +221,14 @@ async function handleRecordingComplete(message) {
     bytes: message.bytes ?? status.bytes,
     uploadedToBackend: !!message.uploaded,
     uploadFailed: !message.uploaded && message.hadApiKey === true,
+    uploadError: message.uploadError || "",
   });
   broadcast({ type: "STATUS_UPDATE", status });
 
   try {
     if (message.uploaded) {
       // Upload was already completed from the offscreen document.
-      await setStatus({ state: "completed", uploadedToBackend: true, uploadFailed: false });
+      await setStatus({ state: "completed", uploadedToBackend: true, uploadFailed: false, uploadError: "" });
       broadcast({ type: "STATUS_UPDATE", status });
     } else {
       // Upload was not possible (no API key or upload failed) — fall back to local download.
@@ -242,6 +243,7 @@ async function handleRecordingComplete(message) {
         state: "completed",
         uploadedToBackend: false,
         uploadFailed: message.hadApiKey === true,
+        uploadError: message.uploadError || "",
       });
       broadcast({ type: "STATUS_UPDATE", status });
       // Keep offscreen document alive for a while so download finishes safely

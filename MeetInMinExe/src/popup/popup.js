@@ -139,7 +139,9 @@ function renderStatus(status) {
       elements.messageText.textContent = t("statusUploadSuccessNotice");
       elements.messageText.style.color = "#10b981";
     } else if (currentStatus.uploadFailed) {
-      elements.messageText.textContent = t("statusUploadFailedNotice");
+      elements.messageText.textContent = currentStatus.uploadError
+        ? `Backend upload failed (${currentStatus.uploadError}) — saved copy to Downloads.`
+        : t("statusUploadFailedNotice");
       elements.messageText.style.color = "#f59e0b";
     } else {
       elements.messageText.textContent = t("statusSavedLocallyNotice");
