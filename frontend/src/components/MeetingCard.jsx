@@ -30,7 +30,11 @@ const formatDuration = (seconds) => {
 
 const formatDate = (dateString) => {
   if (!dateString) return 'Unknown Date';
-  return new Date(dateString).toLocaleString('en-US', {
+  let dateStr = String(dateString);
+  if (!dateStr.endsWith('Z') && !dateStr.includes('+') && !dateStr.includes('-')) {
+    dateStr += 'Z';
+  }
+  return new Date(dateStr).toLocaleString('en-US', {
     month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
   });
 };
