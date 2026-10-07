@@ -444,12 +444,33 @@ async function storeDataChunk(blob) {
   }
 
   const seq = chunkSeq;
-  await putChunk({
-    recordingId,
-    blob,
-    seq,
-    ts: Date.now(),
-  });
+  let retries = 3;
+  let success = false;
+  let lastErr = null;
+
+  while (retries > 0 && !success) {
+    try {
+      await putChunk({
+        recordingId,
+        blob,
+        seq,
+        ts: Date.now(),
+      });
+      success = true;
+    } catch (err) {
+      lastErr = err;
+      retries--;
+      if (retries > 0) {
+        await new Promise((r) => setTimeout(r, 250));
+      }
+    }
+  }
+
+  if (!success) {
+    console.warn(`[MeetInMin] ⚠️ Failed to write chunk ${seq} to IndexedDB after 3 retries:`, lastErr);
+    // Do NOT abort recording — let recording continue and let backend auto-repair recover missing headers.
+  }
+
   bytes += blob.size;
   chunkCount += 1;
   chunkSeq = seq + 1;

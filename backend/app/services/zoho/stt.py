@@ -15,6 +15,57 @@ class ZohoSTTError(Exception):
     """Raised when Zoho Speech-to-Text fails."""
     pass
 
+def repair_webm_bytes_if_needed(audio_file_path: str) -> str | None:
+    """
+    If the file is a WebM recording missing the EBML container header (starts without 1a 45 df a3),
+    prepends a standard WebM Opus container header to allow ffmpeg to demux clusters cleanly.
+    Returns path to a temporary repaired file, or None if repair is not needed/applicable.
+    """
+    try:
+        with open(audio_file_path, "rb") as f:
+            header_bytes = f.read(16)
+        
+        # Check if already has valid EBML header
+        if header_bytes.startswith(bytes.fromhex("1a45dfa3")):
+            return None
+        
+        with open(audio_file_path, "rb") as f:
+            raw_data = f.read()
+
+        cluster_idx = raw_data.find(bytes.fromhex("1f43b675"))
+        if cluster_idx == -1:
+            return None
+
+        logger.warning(f"⚠️ WebM EBML container header missing in {audio_file_path}. Attempting automatic header repair at cluster offset {cluster_idx}...")
+        
+        hdr_hex = (
+            "1a45dfa39f4286810142f7810142f2810442f381084282847765626d42878104428581021853806"
+            "701000000000003da114d9b74ba4dbb8b53ab841549a96653ac81a14dbb8b53ab841654ae6b53ac8"
+            "1d84dbb8c53ab841254c36753ac82013f4dbb8c53ab841c53bb6b53ac8203c4ec010000000000005"
+            "90000000000000000000000000000000000000000000000000000000000000000000000000000000"
+            "00000000000000000000000000000000000000000000000000000000000000000000000000000000"
+            "0000000000000001549a966b22ad7b1830f42404d808d4c61766635382e37362e31303057418"
+            "d4c61766635382e37362e313030448988408f8000000000001654ae6be2ae0100000000000059d78"
+            "10173c58802eaf5bf23fdfc689c810022b59c83756e648686415f4f50555356aa83632ea056bb840"
+            "4c4b400838102e1919f8101b58840e77000000000006264811063a2934f707573486561640101380"
+            "180bb00000000001254c367409b7373010000000000002763c08067c8010000000000001a45a3874"
+            "54e434f44455244878d4c61766635382e37362e3130307373010000000000006063c08b63c58802e"
+            "af5bf23fdfc6867c8010000000000002345a387454e434f4445524487964c61766335382e3133342"
+            "e313030206c69626f70757367c8a245a3884455524154494f4e44879430303a30303a30312e30303"
+            "83030303030300000"
+        )
+        repaired_bytes = bytes.fromhex(hdr_hex) + raw_data[cluster_idx:]
+
+        with tempfile.NamedTemporaryFile(suffix="_repaired.webm", delete=False) as tmp:
+            tmp.write(repaired_bytes)
+            repaired_path = tmp.name
+        
+        logger.info(f"✅ WebM stream repaired successfully -> {repaired_path}")
+        return repaired_path
+    except Exception as err:
+        logger.warning(f"WebM header repair attempt failed: {err}")
+        return None
+
 async def split_audio_into_wav_chunks(audio_file_path: str, segment_seconds: int = 240) -> list[str]:
     """
     Splits an audio file into 16kHz mono WAV chunks of specified duration (default 4 minutes)
@@ -27,10 +78,14 @@ async def split_audio_into_wav_chunks(audio_file_path: str, segment_seconds: int
     temp_dir = tempfile.mkdtemp(prefix="meetinmin_stt_")
     out_pattern = os.path.join(temp_dir, "chunk_%03d.wav")
 
-    logger.info(f"Segmenting audio file {audio_file_path} into {segment_seconds}s 16kHz mono WAV chunks...")
+    # Attempt header repair if file is WebM with missing header
+    repaired_path = repair_webm_bytes_if_needed(audio_file_path)
+    target_path = repaired_path if repaired_path else audio_file_path
+
+    logger.info(f"Segmenting audio file {target_path} into {segment_seconds}s 16kHz mono WAV chunks...")
     try:
         proc = await asyncio.create_subprocess_exec(
-            "ffmpeg", "-y", "-i", audio_file_path,
+            "ffmpeg", "-y", "-err_detect", "ignore_err", "-i", target_path,
             "-f", "segment", "-segment_time", str(segment_seconds),
             "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le",
             out_pattern,
@@ -38,6 +93,22 @@ async def split_audio_into_wav_chunks(audio_file_path: str, segment_seconds: int
             stderr=asyncio.subprocess.PIPE,
         )
         stdout, stderr = await proc.communicate()
+
+        # If original file failed, try repairing if not done yet
+        if proc.returncode != 0 and not repaired_path:
+            repaired_path = repair_webm_bytes_if_needed(audio_file_path)
+            if repaired_path:
+                target_path = repaired_path
+                proc = await asyncio.create_subprocess_exec(
+                    "ffmpeg", "-y", "-err_detect", "ignore_err", "-i", target_path,
+                    "-f", "segment", "-segment_time", str(segment_seconds),
+                    "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le",
+                    out_pattern,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await proc.communicate()
+
         if proc.returncode != 0:
             err_msg = stderr.decode() if stderr else "Unknown ffmpeg error"
             raise ZohoSTTError(f"ffmpeg segmentation failed: {err_msg}")
@@ -52,6 +123,12 @@ async def split_audio_into_wav_chunks(audio_file_path: str, segment_seconds: int
         if isinstance(e, ZohoSTTError):
             raise
         raise ZohoSTTError(f"Audio segmentation failed: {e}") from e
+    finally:
+        if repaired_path and os.path.exists(repaired_path):
+            try:
+                os.remove(repaired_path)
+            except Exception:
+                pass
 
 def _extract_transcript_text(payload: dict) -> str:
     inner = payload.get("data", payload) if isinstance(payload, dict) else {}
