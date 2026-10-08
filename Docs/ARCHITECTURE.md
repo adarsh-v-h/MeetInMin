@@ -1,6 +1,6 @@
 # 🏗️ MeetInMin: System Architecture & Technical Specification
 
-This document provides a comprehensive technical architecture guide for **MeetInMin**, detailing system topography, data pipelines, subsystem implementations, AI prompting strategies, and database schemas.
+This document provides a comprehensive technical architecture guide for **MeetInMin**, detailing system topography, data pipelines, subsystem implementations, AI confidence scoring, AI prompting strategies, and database schemas.
 
 ---
 
@@ -10,23 +10,23 @@ This document provides a comprehensive technical architecture guide for **MeetIn
 graph TB
     subgraph Client Layer
         EXT["Chrome Extension (MV3)<br/>• tabCapture & Offscreen Audio<br/>• IndexedDB Safety Chunks<br/>• Local WebM Download"]
-        SPA["React SPA (Vite)<br/>• Glassmorphic UI<br/>• Dashboard & Analytics<br/>• Transcript & Audio Download"]
+        SPA["React SPA (Vite)<br/>• Glassmorphic UI<br/>• Dashboard & Analytics<br/>• Inline Meeting Title Rename<br/>• Confidence Badges & Tooltips<br/>• Transcript & Audio Download"]
     end
 
     subgraph API Layer (FastAPI)
         AUTH["Auth Router<br/>JWT & Google OAuth 2.0"]
-        MTG["Meetings Router<br/>Upload & Downloads"]
+        MTG["Meetings Router<br/>Upload, Rename (PATCH), & Downloads"]
         QUEUE["Async Queue Runner<br/>audio_queue & Worker"]
     end
 
     subgraph Storage Layer
-        DB[(SQLite / PostgreSQL<br/>SQLAlchemy 2.0 ORM)]
+        DB[(SQLite / PostgreSQL<br/>SQLAlchemy 2.0 ORM + Startup Auto-Migrations)]
         DISK["Local Disk Storage<br/>/uploaded_audio/*.webm"]
     end
 
     subgraph AI & Context Services
         STT["Zoho Zia Speech-to-Text<br/>16kHz Mono WAV Chunks"]
-        GLM["Zoho GLM (47B/30B IT)<br/>Structured Insights Extraction"]
+        GLM["Zoho GLM (47B/30B IT)<br/>Structured Insights Extraction<br/>+ Confidence Scores (0-1) & Smart Titles"]
         GMAIL["Gmail API (OAuth 2.0)<br/>Read-only Mailbox Context"]
     end
 
@@ -49,12 +49,12 @@ graph TB
 |---|---|---|
 | **Backend Framework** | FastAPI (Python 3.11+) | High-performance asynchronous REST API server |
 | **Package Manager** | `uv` (Astral) | Lightning-fast Python dependency management |
-| **Database & ORM** | SQLAlchemy 2.0 + SQLite(for MVP we have kept SQLite itself) / PostgreSQL | Async-compatible ORM with strict model validation |
+| **Database & ORM** | SQLAlchemy 2.0 + SQLite / PostgreSQL | Async-compatible ORM with startup schema auto-migrations |
 | **Audio Processing** | `pydub` + `ffmpeg` | Audio conversion to 16kHz mono WAV & 4-min chunk splitting |
 | **STT Engine** | Zoho Zia Speech-to-Text (`/quickml/.../transcribe`) | High-accuracy Speech-to-Text API |
-| **LLM Engine** | Zoho GLM (`crm-di-glm47b_30b_it`) | Executive summary, key decision & action item extraction |
+| **LLM Engine** | Zoho GLM (`crm-di-glm47b_30b_it`) | Executive summary, key decision & action item extraction with confidence ratings |
 | **Mailbox Intelligence**| Gmail REST API (OAuth 2.0 `gmail.readonly`) | Context enrichment from user emails |
-| **Frontend Framework**| React 18 + Vite | Modern single-page web dashboard |
+| **Frontend Framework**| React 18 + Vite | Modern single-page web dashboard with inline title editing |
 | **Browser Extension** | Chrome Extension Manifest V3 | Silent tab audio recording using Offscreen Documents |
 
 ---
@@ -94,8 +94,8 @@ sequenceDiagram
 
     Queue->>DB: Update status -> analyzing
     Queue->>GLM: Analyze Transcript + Email Context
-    GLM-->>Queue: Return Raw JSON (Summary, Decisions, Action Items)
-    Queue->>DB: Persist MeetingInsight, ActionItems, KeyDecisions, EmailContextSources
+    GLM-->>Queue: Return Structured JSON (Smart Title, Summary + Bullets, Decisions, Action Items with Confidence Scores)
+    Queue->>DB: Update Meeting Title & Persist MeetingInsight, ActionItems, KeyDecisions, EmailContextSources
     Queue->>DB: Update status -> completed
 ```
 
@@ -132,18 +132,22 @@ When a user has connected their Google Workspace account:
 
 ---
 
-### 4. Zoho GLM Intelligence Engine (`app/services/zoho/glm.py`)
-MeetInMin uses Zoho GLM (`crm-di-glm47b_30b_it`) to transform unstructured transcripts into executive meeting intelligence.
+### 4. Zoho GLM Intelligence & Confidence Engine (`app/services/zoho/glm.py`)
+MeetInMin uses Zoho GLM (`crm-di-glm47b_30b_it`) to transform unstructured transcripts into executive meeting intelligence with itemized confidence scoring.
 
-#### System Prompt Enforcement Rules:
-* **Transcript Primacy**: The transcript is strictly the primary source of truth.
-* **Exhaustive Action Items**: Captures *every single task*, commitment, or follow-up mentioned, including unassigned tasks.
-* **Exhaustive Key Decisions**: Captures all agreed-upon decisions and outcomes.
-* **Structured JSON Output**: Enforces strict JSON matching the `MeetingInsights` Pydantic model (`summary`, `key_decisions`, `action_items`).
+#### System Prompt & Output Schema Rules:
+* **Smart Meeting Titles**: Extracts a 3 to 6 word descriptive title (`meeting_title`) summarizing the core discussion.
+* **Confidence Scoring**: Computes a numeric float score (`0.00` to `1.00`) and a `confidence_reason` for every summary bullet, key decision, and action item:
+  - **High Confidence (0.85 – 1.00)**: Directly and explicitly spoken in transcript.
+  - **Medium Confidence (0.60 – 0.84)**: Contextually inferred or supported by email context.
+  - **Low Confidence (0.00 – 0.59)**: Assumed or speculative due to missing transcript context.
+* **Transcript Primacy**: The transcript is strictly the primary source of truth; email context is supplementary only.
+* **Exhaustive Extraction**: Captures *every single task*, commitment, and decision mentioned.
 
 ---
 
-### 5. Background Queue Runner & Startup Auto-Recovery
+### 5. Startup Auto-Migrations & Queue Recovery (`app/db/database.py`)
+* **Schema Auto-Migrations** (`run_auto_migrations`): On server startup, non-destructive `ALTER TABLE` statements automatically ensure database columns (`summary_json`, `confidence_score`, `confidence_reason`) exist, preventing breaking schema updates on existing deployments.
 * **Sequential Queue Execution** (`queue_manager.py`): An `asyncio.Queue` processes uploaded audio sequentially to prevent Zoho API rate-limiting.
 * **Crash & Restart Recovery** (`app/main.py`): On server startup, MeetInMin scans the database for meetings stuck in `uploaded`, `transcribing`, or `analyzing` status and automatically re-queues them for background completion.
 
@@ -208,6 +212,7 @@ erDiagram
         string id PK
         string meeting_id FK
         text summary
+        text summary_json
         datetime created_at
     }
 
@@ -216,12 +221,17 @@ erDiagram
         string insight_id FK
         string task
         string assignee
+        boolean is_completed
+        float confidence_score
+        text confidence_reason
     }
 
     KeyDecision {
         string id PK
         string insight_id FK
         string decision_text
+        float confidence_score
+        text confidence_reason
     }
 
     EmailContextSource {

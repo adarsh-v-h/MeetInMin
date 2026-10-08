@@ -8,8 +8,10 @@
 
 - **Zero-Bot Ingestion**: Captures high-fidelity tab & microphone audio via a lightweight Chrome extension (`MeetInMinExe`) — no meeting room bots required.
 - **Zoho AI Intelligence**: Powered by Zoho Catalyst Zia STT (with automatic 4-minute audio chunking) and Zoho GLM (`crm-di-glm47b_30b_it`).
+- **Itemized Confidence Scoring**: Evaluates summary bullet points, key decisions, and action items on a `0.00` to `1.00` confidence scale (High/Medium/Low badges with explanation tooltips).
+- **AI Smart Titles & Custom Renaming**: Automatically generates 3-6 word descriptive meeting titles and supports inline manual title renaming (`PATCH /v1/meetings/{id}`).
 - **Mailbox Intelligence**: Connects to your Gmail via OAuth 2.0 to cross-reference email context, attributing decisions and follow-ups to relevant email threads without storing raw email content.
-- **Local Safety Backup**: Offers instant 1-click local `.webm` file downloads right from the extension popup.
+- **Local Safety Backup & Auto-Migrations**: Extension offers 1-click local `.webm` file downloads, and the backend performs automatic startup schema migrations.
 - **Full Data Ownership**: Download raw transcripts (`.txt`) and original meeting audio (`.webm`) directly from your dashboard anytime.
 
 ---

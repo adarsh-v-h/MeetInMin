@@ -37,12 +37,18 @@ _Last updated: October 2026_
   - Instantaneous SHA-256 API Key verification.
 - **MeetInMin Extension:** Rebranded Chrome extension, distributed from the Landing page.
 
-### 4. Zoho AI Pipeline (STT + GLM)
+### 4. Zoho AI Pipeline (STT + GLM + Confidence Engine)
 - **Zoho Catalyst Zia STT:** Audio is automatically converted to 16kHz mono WAV using `pydub`/`ffmpeg` before being sent to Zoho's Speech-to-Text endpoint. Raw transcript is stored in the DB before any further processing.
 - **Zoho GLM (`crm-di-glm47b_30b_it`):** Structured meeting intelligence extraction producing:
-  - Executive Summary
-  - Action Items (with assignees)
-  - Key Decisions
+  - **Smart Meeting Titles:** Automatically generates a 3-6 word descriptive title summarizing the meeting topic.
+  - **Executive Summary:** Executive summary with itemized bullet points and confidence scores.
+  - **Action Items (with assignees & confidence scores):** Itemized task follow-ups with explicit confidence ratings and justification reasons.
+  - **Key Decisions (with confidence scores):** Decision records with confidence scores.
+- **Confidence Rating Scale (0.00 – 1.00):**
+  - **High (≥85%):** Directly and explicitly stated in transcript.
+  - **Medium (60% – 84%):** Inferred contextually or supported by email context.
+  - **Low (<60%):** Assumed or speculative due to incomplete transcript details.
+  - **UI Tooltips:** Interactive badges in frontend show exact percentages and explanatory reasons on hover.
 - **Retry Logic:** Both STT and GLM calls implement exponential backoff with jitter for resilience.
 - **Background Processing:** Audio analysis runs in an async background task, with meeting status tracked through `transcribing → analyzing → completed / failed`.
 
@@ -58,23 +64,26 @@ _Last updated: October 2026_
 - **Auth UI:** Glassmorphism Login, Register, and Landing pages.
 - **AppShell:** Persistent collapsible sidebar with `lucide-react` iconography.
 - **API Keys (`/api-keys`):** Full lifecycle — creation, one-time secret display, revocation, status badges.
-- **Dashboard (`/dashboard`):** Paginated meeting list with pulsing animated processing status.
+- **Dashboard (`/dashboard`):** Paginated meeting list with pulsing animated processing status and AI smart meeting titles.
 - **Meeting Details (`/meetings/:id`):**
+  - **Inline Meeting Renaming:** Clickable pencil icon to edit and save meeting titles directly (`PATCH /v1/meetings/:id`).
+  - **Confidence Badges:** Percentage badges (High/Medium/Low) with explanatory tooltips for bullets, decisions, and action items.
   - Executive Summary, Action Items, Key Decisions panels.
   - Raw Transcript panel with copy-to-clipboard.
   - **Email Context Sources section:** Displays which emails were used to enrich the analysis, each with an "Open in Gmail" link.
-  - **Gmail Nudge Banner:** Shown for completed meetings where no Gmail context was available — gently prompts the user to connect Gmail for better results (no gating, baseline results always shown).
-  - Audio download support.
+  - **Gmail Nudge Banner:** Shown for completed meetings where no Gmail context was available — gently prompts the user to connect Gmail for better results.
+  - Audio (`.webm`) and Transcript (`.txt`) download support with disposition headers and async object URL cleanup.
 - **Settings (`/settings`):** Google account connection/disconnection, profile management.
 
 ---
 
-### 7. Extension Upload Assurance & Offline Retry Queue (New)
+### 7. Extension Upload Assurance & Offline Retry Queue
 - **Local Download Backup:** Added prominent "Download Local Copy" button in the extension popup UI. Users can save a `.webm` backup anytime during or after recording.
 - **Offline Retry Queue:** Offscreen document retains audio data in IndexedDB if backend upload fails or network drops. Automatically retries pending uploads in background.
 - **Clear User Assurance:** Real-time feedback in extension popup ("Uploading to MeetInMin...", "Uploaded successfully!").
 
-### 8. Backend Resilience & Audio Chunking (New)
+### 8. Backend Resilience, Auto-Migrations & Audio Chunking
+- **Database Startup Auto-Migrations:** Automated non-destructive `ALTER TABLE` execution on startup (`database.py`) ensuring `summary_json`, `confidence_score`, and `confidence_reason` columns are present for smooth backward compatibility.
 - **STT Audio Chunking:** Automatic `ffmpeg` segmentation splits long audio files (>10MB/100MB+) into 4-minute 16kHz mono WAV chunks before sending to Zoho STT, preventing `FILE_SIZE_MORE_THAN_ALLOWED_SIZE` 400 errors.
 - **Startup Recovery:** Backend startup re-queues any interrupted meetings (`uploaded`, `transcribing`, `analyzing`) with existing audio files into `audio_queue`.
 
