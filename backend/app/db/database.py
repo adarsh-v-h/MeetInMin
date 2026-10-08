@@ -16,6 +16,26 @@ SessionLocal = sessionmaker(autoflush=False, bind=engine)
 
 Base = declarative_base()
 
+def run_auto_migrations(db_engine):
+    from sqlalchemy import text
+    columns_to_add = [
+        ('meeting_insights', 'summary_json', 'TEXT'),
+        ('action_items', 'confidence_score', 'FLOAT DEFAULT 0.5'),
+        ('action_items', 'confidence_reason', 'TEXT'),
+        ('key_decisions', 'confidence_score', 'FLOAT DEFAULT 0.5'),
+        ('key_decisions', 'confidence_reason', 'TEXT'),
+    ]
+    with db_engine.connect() as conn:
+        for table, col, col_type in columns_to_add:
+            try:
+                conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {col} {col_type};'))
+                conn.commit()
+            except Exception:
+                pass
+
+# Run automatic schema migration on startup to ensure backward compatibility
+run_auto_migrations(engine)
+
 # Dependency to yield database sessions to our FastAPI routes
 def get_db():
     db = SessionLocal()

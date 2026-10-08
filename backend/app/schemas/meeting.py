@@ -18,11 +18,15 @@ class SummaryBullet(BaseModel):
     confidence_reason: Optional[str] = Field(default=None, description="Brief explanation of confidence level")
 
 class MeetingInsights(BaseModel):
+    meeting_title: Optional[str] = Field(default=None, description="A concise 3-6 word title summarizing the meeting topic.")
     full_transcript: str = Field(description="The complete, word-for-word transcript of the entire audio recording. Do not summarize this field.")
     summary: str = Field(description="A brief, executive summary of the overall meeting.")
     summary_bullets: List[SummaryBullet] = Field(default=[], description="Structured bullet points with confidence scores.")
     key_decisions: List[Union[KeyDecision, str]] = Field(description="A list of key decisions made during the meeting.")
     action_items: List[ActionItem] = Field(description="A list of action items assigned to individuals.")
+
+class MeetingUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=255)
 
 from datetime import datetime, timezone
 from pydantic import field_serializer
@@ -36,7 +40,9 @@ class MeetingSummaryResponse(BaseModel):
     api_key_name: Optional[str]
 
     @field_serializer('created_at')
-    def serialize_created_at(self, dt: datetime, _info) -> str:
+    def serialize_created_at(self, dt: Optional[datetime], _info) -> Optional[str]:
+        if dt is None:
+            return None
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.isoformat()
@@ -119,7 +125,9 @@ class MeetingDetailResponse(BaseModel):
     email_context_sources: List[DBEmailContextSource] = []
 
     @field_serializer('created_at')
-    def serialize_created_at(self, dt: datetime, _info) -> str:
+    def serialize_created_at(self, dt: Optional[datetime], _info) -> Optional[str]:
+        if dt is None:
+            return None
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.isoformat()

@@ -17,7 +17,7 @@ router = APIRouter()
 import logging
 from app.db.database import SessionLocal
 from app.db.models import Meeting, Transcript, MeetingInsight, ActionItem, KeyDecision, EmailContextSource
-from app.schemas.meeting import PaginatedMeetings, MeetingDetailResponse
+from app.schemas.meeting import PaginatedMeetings, MeetingDetailResponse, MeetingUpdate
 from app.api.deps import CurrentUser
 
 logger = logging.getLogger(__name__)
@@ -97,6 +97,9 @@ async def process_audio_background(meeting_id: str, file_path: str):
             return
 
         # Step 5: Save Insights to DB
+        if hasattr(insights, "meeting_title") and insights.meeting_title and insights.meeting_title.strip():
+            meeting.title = insights.meeting_title.strip()
+
         existing_insight = db.query(MeetingInsight).filter(MeetingInsight.meeting_id == meeting.id).first()
         if existing_insight:
             db.delete(existing_insight)
@@ -288,7 +291,8 @@ async def get_meeting_details(meeting_id: str, current_user: CurrentUser, db: Db
             joinedload(Meeting.api_key),
             joinedload(Meeting.transcript),
             joinedload(Meeting.insight).joinedload(MeetingInsight.action_items),
-            joinedload(Meeting.insight).joinedload(MeetingInsight.key_decisions)
+            joinedload(Meeting.insight).joinedload(MeetingInsight.key_decisions),
+            joinedload(Meeting.email_context_sources),
         ).where(Meeting.id == meeting_id, Meeting.user_id == current_user.id)
     ).unique().scalar_one_or_none()
     
@@ -303,7 +307,8 @@ async def get_meeting_details(meeting_id: str, current_user: CurrentUser, db: Db
         "duration": meeting.duration,
         "api_key_name": meeting.api_key.name if meeting.api_key else None,
         "transcript": meeting.transcript,
-        "insight": meeting.insight
+        "insight": meeting.insight,
+        "email_context_sources": meeting.email_context_sources or [],
     }
 
 @router.get("/{meeting_id}/audio", response_class=FileResponse)
@@ -389,5 +394,30 @@ async def retry_failed_meeting(
     audio_queue.put_nowait((meeting.id, meeting.audio_file_path))
     
     return {"status": "success", "message": "Meeting analysis has been restarted in the background."}
+
+
+@router.patch("/{meeting_id}")
+async def update_meeting(
+    meeting_id: str,
+    update_data: MeetingUpdate,
+    current_user: CurrentUser,
+    db: DbSession
+):
+    meeting = db.execute(
+        select(Meeting).where(Meeting.id == meeting_id, Meeting.user_id == current_user.id)
+    ).scalar_one_or_none()
+    
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+        
+    if update_data.title is not None and update_data.title.strip():
+        meeting.title = update_data.title.strip()
+        db.commit()
+        db.refresh(meeting)
+        
+    return {
+        "status": "success",
+        "title": meeting.title
+    }
 
 

@@ -79,6 +79,7 @@ Your job is to thoroughly analyze the provided meeting transcript and extract co
 
 You MUST respond ONLY with a valid, raw JSON object matching this exact schema:
 {
+  "meeting_title": "Concise 3 to 6 word title summarizing the meeting main topic (e.g., 'Q3 Marketing Strategy Sync')",
   "summary": "An executive summary of the meeting. Synthesize all major topics, key discussions, context, and outcomes thoroughly using structured bullet points and clear paragraphs.",
   "summary_bullets": [
     {
