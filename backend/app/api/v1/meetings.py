@@ -410,10 +410,16 @@ async def update_meeting(
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
         
-    if update_data.title is not None and update_data.title.strip():
-        meeting.title = update_data.title.strip()
-        db.commit()
-        db.refresh(meeting)
+    clean_title = update_data.title.strip() if update_data.title else ""
+    if len(clean_title) < 2 or len(clean_title) > 255:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Meeting title must be between 2 and 255 characters."
+        )
+        
+    meeting.title = clean_title
+    db.commit()
+    db.refresh(meeting)
         
     return {
         "status": "success",

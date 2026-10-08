@@ -317,8 +317,13 @@ const MeetingDetails = () => {
   }, [meeting?.title]);
 
   const handleSaveTitle = async () => {
-    if (!titleText.trim() || titleText === meeting.title) {
+    const trimmed = titleText.trim();
+    if (trimmed === meeting.title) {
       setIsEditingTitle(false);
+      return;
+    }
+    if (trimmed.length < 2 || trimmed.length > 255) {
+      alert("Meeting title must be between 2 and 255 characters.");
       return;
     }
     try {
@@ -328,12 +333,15 @@ const MeetingDetails = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ title: titleText.trim() })
+        body: JSON.stringify({ title: trimmed })
       });
-      if (response.ok) {
-        setMeeting(prev => ({ ...prev, title: titleText.trim() }));
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Failed to update title');
       }
+      setMeeting(prev => ({ ...prev, title: trimmed }));
     } catch (e) {
+      alert(e.message || 'Failed to update meeting title.');
       console.error('Failed to update title:', e);
     } finally {
       setIsEditingTitle(false);
@@ -444,6 +452,8 @@ const MeetingDetails = () => {
                 <input
                   type="text"
                   value={titleText}
+                  minLength={2}
+                  maxLength={255}
                   onChange={(e) => setTitleText(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleSaveTitle();

@@ -32,6 +32,11 @@ def run_auto_migrations(db_engine):
                 conn.commit()
             except Exception:
                 pass
+        try:
+            conn.execute(text("UPDATE meetings SET title = 'Untitled Meeting' WHERE title IS NULL OR TRIM(title) = '';"))
+            conn.commit()
+        except Exception:
+            pass
 
 # Run automatic schema migration on startup to ensure backward compatibility
 run_auto_migrations(engine)

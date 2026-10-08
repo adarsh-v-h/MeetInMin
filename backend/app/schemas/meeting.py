@@ -26,10 +26,10 @@ class MeetingInsights(BaseModel):
     action_items: List[ActionItem] = Field(description="A list of action items assigned to individuals.")
 
 class MeetingUpdate(BaseModel):
-    title: Optional[str] = Field(default=None, max_length=255)
+    title: str = Field(min_length=2, max_length=255, description="Meeting title must be between 2 and 255 characters.")
 
 from datetime import datetime, timezone
-from pydantic import field_serializer
+from pydantic import BaseModel, Field, field_serializer, field_validator
 
 class MeetingSummaryResponse(BaseModel):
     id: str
@@ -38,6 +38,12 @@ class MeetingSummaryResponse(BaseModel):
     status: str
     duration: Optional[int]
     api_key_name: Optional[str]
+
+    @field_validator('title', mode='before')
+    def validate_title(cls, v):
+        if not v or not str(v).strip():
+            return "Untitled Meeting"
+        return str(v).strip()
 
     @field_serializer('created_at')
     def serialize_created_at(self, dt: Optional[datetime], _info) -> Optional[str]:
@@ -119,6 +125,12 @@ class MeetingDetailResponse(BaseModel):
     status: str
     duration: Optional[int]
     api_key_name: Optional[str]
+
+    @field_validator('title', mode='before')
+    def validate_title(cls, v):
+        if not v or not str(v).strip():
+            return "Untitled Meeting"
+        return str(v).strip()
 
     transcript: Optional[DBTranscript]
     insight: Optional[DBMeetingInsight]
