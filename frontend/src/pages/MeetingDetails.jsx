@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ChevronLeft, Calendar, Clock, Key, Download, 
-  CheckSquare, FileText, Lightbulb, AlertCircle, Mail, ExternalLink
+  CheckSquare, FileText, Lightbulb, AlertCircle, Mail, ExternalLink, Edit2, Check, X
 } from 'lucide-react';
 
 const getStatusConfig = (status) => {
@@ -309,6 +309,37 @@ const MeetingDetails = () => {
     fetchMeeting();
   }, [fetchMeeting]);
 
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleText, setTitleText] = useState('');
+
+  useEffect(() => {
+    if (meeting?.title) setTitleText(meeting.title);
+  }, [meeting?.title]);
+
+  const handleSaveTitle = async () => {
+    if (!titleText.trim() || titleText === meeting.title) {
+      setIsEditingTitle(false);
+      return;
+    }
+    try {
+      const response = await fetch(`http://localhost:8000/v1/meetings/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ title: titleText.trim() })
+      });
+      if (response.ok) {
+        setMeeting(prev => ({ ...prev, title: titleText.trim() }));
+      }
+    } catch (e) {
+      console.error('Failed to update title:', e);
+    } finally {
+      setIsEditingTitle(false);
+    }
+  };
+
   const handleDownload = async () => {
     try {
       setDownloading(true);
@@ -321,11 +352,15 @@ const MeetingDetails = () => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `meeting_${id}_audio.webm`;
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const filenameMatch = disposition.match(/filename="([^"]+)"/);
+      a.download = filenameMatch ? filenameMatch[1] : `meeting_${id}_audio.webm`;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }, 1000);
     } catch(err) {
       alert("Could not download audio. The file might be processing or deleted.");
     } finally {
@@ -350,8 +385,10 @@ const MeetingDetails = () => {
       a.download = filenameMatch ? filenameMatch[1] : `meeting_${id}_transcript.txt`;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }, 1000);
     } catch(err) {
       alert('Could not download transcript. The transcript may not be available yet.');
     } finally {
@@ -401,10 +438,60 @@ const MeetingDetails = () => {
         borderRadius: '16px', padding: '2rem', backdropFilter: 'blur(10px)'
       }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 'bold', margin: 0, color: '#fff' }}>
-              {meeting.title}
-            </h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+            {isEditingTitle ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <input
+                  type="text"
+                  value={titleText}
+                  onChange={(e) => setTitleText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveTitle();
+                    if (e.key === 'Escape') setIsEditingTitle(false);
+                  }}
+                  autoFocus
+                  style={{
+                    fontSize: '1.4rem', fontWeight: 'bold', color: '#fff',
+                    background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)',
+                    borderRadius: '8px', padding: '0.3rem 0.75rem', outline: 'none', minWidth: '300px'
+                  }}
+                />
+                <button
+                  onClick={handleSaveTitle}
+                  title="Save Title"
+                  style={{ background: '#10b981', border: 'none', borderRadius: '6px', padding: '0.4rem', color: '#fff', cursor: 'pointer', display: 'flex' }}
+                >
+                  <Check size={18} />
+                </button>
+                <button
+                  onClick={() => { setIsEditingTitle(false); setTitleText(meeting.title); }}
+                  title="Cancel"
+                  style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '6px', padding: '0.4rem', color: '#fff', cursor: 'pointer', display: 'flex' }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <h1 style={{ fontSize: '1.75rem', fontWeight: 'bold', margin: 0, color: '#fff' }}>
+                  {meeting.title}
+                </h1>
+                <button
+                  onClick={() => setIsEditingTitle(true)}
+                  title="Rename Meeting"
+                  style={{
+                    background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)',
+                    cursor: 'pointer', padding: '4px', borderRadius: '4px', display: 'flex', alignItems: 'center',
+                    transition: 'color 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = '#fff'}
+                  onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}
+                >
+                  <Edit2 size={16} />
+                </button>
+              </div>
+            )}
+
             <div style={{
               padding: '4px 12px', borderRadius: '20px', background: statusConfig.bg, color: statusConfig.color,
               fontSize: '0.8rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px'
