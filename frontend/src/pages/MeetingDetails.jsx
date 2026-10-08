@@ -66,10 +66,95 @@ const parseSummaryBullets = (text) => {
     .filter(Boolean);
 };
 
-const SummaryBullets = ({ text }) => {
+const ConfidenceBadge = ({ score, reason }) => {
+  const safeScore = (score === undefined || score === null) ? 0.5 : score;
+  const pct = Math.round(safeScore * 100);
+  
+  let color = '#3b82f6';
+  let bg = 'rgba(59, 130, 246, 0.12)';
+  let border = 'rgba(59, 130, 246, 0.25)';
+  let label = 'Medium';
+
+  if (pct >= 85) {
+    color = '#10b981';
+    bg = 'rgba(16, 185, 129, 0.12)';
+    border = 'rgba(16, 185, 129, 0.3)';
+    label = 'High';
+  } else if (pct >= 60) {
+    color = '#f59e0b';
+    bg = 'rgba(245, 158, 11, 0.12)';
+    border = 'rgba(245, 158, 11, 0.3)';
+    label = 'Medium';
+  } else {
+    color = '#ef4444';
+    bg = 'rgba(239, 68, 68, 0.12)';
+    border = 'rgba(239, 68, 68, 0.3)';
+    label = 'Low';
+  }
+
+  const tooltipText = reason ? `${pct}% ${label} Confidence: ${reason}` : `${pct}% ${label} Confidence`;
+
+  return (
+    <span 
+      title={tooltipText}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '5px',
+        background: bg,
+        color: color,
+        border: `1px solid ${border}`,
+        borderRadius: '12px',
+        padding: '2px 8px',
+        fontSize: '0.75rem',
+        fontWeight: '600',
+        lineHeight: '1.2',
+        cursor: 'help',
+        userSelect: 'none',
+        flexShrink: 0,
+      }}
+    >
+      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: color }} />
+      <span>{pct}% {label}</span>
+    </span>
+  );
+};
+
+const SummaryBullets = ({ text, summaryJson }) => {
+  let structuredBullets = null;
+  if (summaryJson) {
+    try {
+      structuredBullets = JSON.parse(summaryJson);
+    } catch (e) {
+      structuredBullets = null;
+    }
+  }
+
+  if (structuredBullets && Array.isArray(structuredBullets) && structuredBullets.length > 0) {
+    return (
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        {structuredBullets.map((item, i) => (
+          <li key={i} style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'flex-start', flex: 1 }}>
+              <span style={{
+                flexShrink: 0,
+                marginTop: '0.45rem',
+                width: '6px', height: '6px',
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #a855f7, #6366f1)',
+                display: 'block',
+              }} />
+              <span style={{ lineHeight: '1.65', color: 'rgba(255,255,255,0.85)' }}>{item.point || item}</span>
+            </div>
+            <ConfidenceBadge score={item.confidence_score} reason={item.confidence_reason} />
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
   const bullets = parseSummaryBullets(text);
   if (bullets.length <= 1) {
-    // Fallback: just render as-is
     return <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>{text}</div>;
   }
   return (
@@ -381,7 +466,7 @@ const MeetingDetails = () => {
           <Section title="Executive Summary" icon={<FileText size={18} color="#a855f7" />}>
             {isProcessing ? <ProcessingPlaceholder text="Generating summary..." /> : 
              !meeting.insight ? <span style={{color: 'rgba(255,255,255,0.4)'}}>No summary available.</span> :
-             <SummaryBullets text={meeting.insight.summary} />
+             <SummaryBullets text={meeting.insight.summary} summaryJson={meeting.insight.summary_json} />
             }
           </Section>
 
@@ -393,15 +478,19 @@ const MeetingDetails = () => {
                  {meeting.insight.action_items.map((item, i) => (
                    <li key={i} style={{ 
                      display: 'flex', gap: '0.75rem', background: 'rgba(255,255,255,0.02)', 
-                     padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)'
+                     padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)',
+                     justifyContent: 'space-between', alignItems: 'flex-start'
                    }}>
-                     <div style={{ width: '16px', height: '16px', borderRadius: '4px', border: '2px solid rgba(255,255,255,0.3)', flexShrink: 0, marginTop: '2px' }} />
-                     <div>
-                       <div style={{ marginBottom: '4px', color: '#fff' }}>{item.task}</div>
-                       <div style={{ fontSize: '0.8rem', color: '#10b981', display: 'inline-block', background: 'rgba(16,185,129,0.1)', padding: '2px 8px', borderRadius: '4px' }}>
-                         Owner: {item.assignee || 'Unassigned'}
+                     <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', flex: 1 }}>
+                       <div style={{ width: '16px', height: '16px', borderRadius: '4px', border: '2px solid rgba(255,255,255,0.3)', flexShrink: 0, marginTop: '2px' }} />
+                       <div>
+                         <div style={{ marginBottom: '6px', color: '#fff' }}>{item.task}</div>
+                         <div style={{ fontSize: '0.8rem', color: '#10b981', display: 'inline-block', background: 'rgba(16,185,129,0.1)', padding: '2px 8px', borderRadius: '4px' }}>
+                           Owner: {item.assignee || 'Unassigned'}
+                         </div>
                        </div>
                      </div>
+                     <ConfidenceBadge score={item.confidence_score} reason={item.confidence_reason} />
                    </li>
                  ))}
                </ul>
@@ -411,9 +500,15 @@ const MeetingDetails = () => {
             <Section title="Key Decisions" icon={<Lightbulb size={18} color="#f59e0b" />}>
               {isProcessing ? <ProcessingPlaceholder text="Extracting decisions..." /> : 
                !meeting.insight?.key_decisions?.length ? <span style={{color: 'rgba(255,255,255,0.4)'}}>No decisions found.</span> :
-               <ul style={{ paddingLeft: '1.2rem', margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+               <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                  {meeting.insight.key_decisions.map((dec, i) => (
-                   <li key={i}>{dec.decision_text}</li>
+                   <li key={i} style={{
+                     display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem',
+                     background: 'rgba(255,255,255,0.02)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)'
+                   }}>
+                     <span style={{ color: '#fff', lineHeight: '1.5', flex: 1 }}>{dec.decision_text}</span>
+                     <ConfidenceBadge score={dec.confidence_score} reason={dec.confidence_reason} />
+                   </li>
                  ))}
                </ul>
               }

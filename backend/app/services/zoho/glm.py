@@ -75,30 +75,47 @@ The transcript is always the primary source.
 """
 
     system_prompt = """You are an expert executive assistant and meeting intelligence analyst.
-Your job is to thoroughly analyze the provided meeting transcript and extract comprehensive, structured meeting insights.
+Your job is to thoroughly analyze the provided meeting transcript and extract comprehensive, structured meeting insights with confidence scores for each item.
 
 You MUST respond ONLY with a valid, raw JSON object matching this exact schema:
 {
   "summary": "An executive summary of the meeting. Synthesize all major topics, key discussions, context, and outcomes thoroughly using structured bullet points and clear paragraphs.",
+  "summary_bullets": [
+    {
+      "point": "Specific bullet point sentence describing a key topic or outcome",
+      "confidence_score": 0.95,
+      "confidence_reason": "Brief explanation (e.g., 'Explicitly stated in audio')"
+    }
+  ],
   "key_decisions": [
-    "Comprehensive decision 1 with context",
-    "Comprehensive decision 2 with context"
+    {
+      "decision_text": "Comprehensive decision 1 with context",
+      "confidence_score": 0.90,
+      "confidence_reason": "Brief explanation (e.g., 'Direct agreement reached by team')"
+    }
   ],
   "action_items": [
     {
       "task": "Specific description of the task or commitment",
-      "assignee": "Person assigned (or 'Unassigned' if implicit / not explicitly named)"
+      "assignee": "Person assigned (or 'Unassigned' if implicit / not explicitly named)",
+      "confidence_score": 0.75,
+      "confidence_reason": "Brief explanation (e.g., 'Assignee inferred from context')"
     }
   ]
 }
 
+CRITICAL INSTRUCTIONS FOR CONFIDENCE SCORING:
+For EVERY summary bullet point, key decision, and action item, evaluate your confidence on a 0.00 to 1.00 float scale:
+- 0.85 - 1.00: High Confidence. Directly and explicitly spoken in the transcript.
+- 0.60 - 0.84: Medium Confidence. Contextually inferred or supported by email context.
+- 0.00 - 0.59: Low Confidence. Assumed or speculative due to missing transcript details.
+
 CRITICAL INSTRUCTIONS FOR COMPLETENESS AND QUALITY:
-1. EXHAUSTIVE ACTION ITEMS: Extract EVERY single action item, task, follow-up, promise, or next step mentioned in the transcript. Do NOT omit minor tasks. If someone agreed to send a link, check a document, or schedule a follow-up, capture it!
+1. EXHAUSTIVE ACTION ITEMS: Extract EVERY single action item, task, follow-up, promise, or next step mentioned in the transcript. Do NOT omit minor tasks.
 2. EXHAUSTIVE KEY DECISIONS: List ALL decisions made, agreed upon, or resolved during the meeting.
-3. COMPREHENSIVE SUMMARY: Do NOT abbreviate or give a vague high-level summary. Ensure the summary covers all main agenda points, context, and key topics discussed.
-4. NO ARTIFICIAL LENGTH CAPS: Adapt the detail level dynamically to the meeting length—longer transcripts must yield rich, comprehensive breakdowns.
-5. NO MARKDOWN WRAPPERS: Do NOT include code formatting backticks (no ```json or ```) or intro/outro text. Return ONLY the raw JSON string.
-6. TRANSCRIPT PRIMACY: Base your analysis primarily on the transcript. Supporting email context (if provided) is supplementary only to clarify names or references.
+3. COMPREHENSIVE SUMMARY: Do NOT abbreviate or give a vague high-level summary. Cover all main agenda points and key topics discussed.
+4. NO MARKDOWN WRAPPERS: Do NOT include code formatting backticks (no ```json or ```) or intro/outro text. Return ONLY the raw JSON string.
+5. TRANSCRIPT PRIMACY: Base your analysis primarily on the transcript. Supporting email context (if provided) is supplementary only.
 """
 
     user_prompt = f"Meeting Transcript:\n\n{transcript}{email_context_block}"
@@ -162,10 +179,24 @@ CRITICAL INSTRUCTIONS FOR COMPLETENESS AND QUALITY:
 
                 try:
                     parsed_dict = json.loads(cleaned_json)
+                    # Normalize key_decisions if GLM returned simple strings instead of objects
+                    if "key_decisions" in parsed_dict and isinstance(parsed_dict["key_decisions"], list):
+                        norm_decisions = []
+                        for dec in parsed_dict["key_decisions"]:
+                            if isinstance(dec, str):
+                                norm_decisions.append({
+                                    "decision_text": dec,
+                                    "confidence_score": 0.5,
+                                    "confidence_reason": "Unrated / Legacy item"
+                                })
+                            elif isinstance(dec, dict):
+                                norm_decisions.append(dec)
+                        parsed_dict["key_decisions"] = norm_decisions
+
                     # Add full_transcript to match schema expected by MeetingInsights
                     parsed_dict["full_transcript"] = transcript
                     insights = MeetingInsights.model_validate(parsed_dict)
-                    logger.info("Successfully generated structured insights with Zoho GLM!")
+                    logger.info("Successfully generated structured insights with confidence scores via Zoho GLM!")
                     return insights
                 except Exception as parse_err:
                     logger.error(f"Failed to parse Zoho GLM JSON response: {parse_err}\nRaw text: {raw_text}")

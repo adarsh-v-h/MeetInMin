@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean, UniqueConstraint
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean, UniqueConstraint, Float
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.database import Base
@@ -83,6 +83,7 @@ class MeetingInsight(Base):
     id = Column(Integer, primary_key=True, index=True)
     meeting_id = Column(String(36), ForeignKey("meetings.id"), unique=True, nullable=False)
     summary = Column(Text, nullable=False)
+    summary_json = Column(Text, nullable=True)
     
     meeting = relationship("Meeting", back_populates="insight")
     action_items = relationship("ActionItem", back_populates="insight", cascade="all, delete-orphan")
@@ -96,6 +97,8 @@ class ActionItem(Base):
     task = Column(Text, nullable=False)
     assignee = Column(String(255), nullable=True)
     is_completed = Column(Boolean, default=False)
+    confidence_score = Column(Float, nullable=True, default=0.5)
+    confidence_reason = Column(Text, nullable=True)
     
     insight = relationship("MeetingInsight", back_populates="action_items")
 
@@ -105,6 +108,8 @@ class KeyDecision(Base):
     id = Column(Integer, primary_key=True, index=True)
     insight_id = Column(Integer, ForeignKey("meeting_insights.id"), nullable=False)
     decision_text = Column(Text, nullable=False)
+    confidence_score = Column(Float, nullable=True, default=0.5)
+    confidence_reason = Column(Text, nullable=True)
     
     insight = relationship("MeetingInsight", back_populates="key_decisions")
 

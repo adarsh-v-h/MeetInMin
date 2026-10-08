@@ -102,23 +102,45 @@ async def process_audio_background(meeting_id: str, file_path: str):
             db.delete(existing_insight)
             db.flush()
 
+        import json
+        summary_json_str = None
+        if hasattr(insights, "summary_bullets") and insights.summary_bullets:
+            summary_json_str = json.dumps([b.model_dump() for b in insights.summary_bullets])
+
         new_insight = MeetingInsight(
             meeting_id=meeting.id,
-            summary=insights.summary
+            summary=insights.summary,
+            summary_json=summary_json_str
         )
         db.add(new_insight)
         db.flush()
 
-        # Save Key Decisions
+        # Save Key Decisions with confidence scores
         for decision in insights.key_decisions:
-            db.add(KeyDecision(insight_id=new_insight.id, decision_text=decision))
+            if isinstance(decision, str):
+                d_text = decision
+                d_score = 0.5
+                d_reason = "Unrated / Legacy item"
+            else:
+                d_text = getattr(decision, "decision_text", str(decision))
+                d_score = getattr(decision, "confidence_score", 0.5)
+                d_reason = getattr(decision, "confidence_reason", None)
 
-        # Save Action Items
+            db.add(KeyDecision(
+                insight_id=new_insight.id,
+                decision_text=d_text,
+                confidence_score=d_score if d_score is not None else 0.5,
+                confidence_reason=d_reason
+            ))
+
+        # Save Action Items with confidence scores
         for item in insights.action_items:
             db.add(ActionItem(
                 insight_id=new_insight.id,
                 task=item.task,
-                assignee=item.assignee
+                assignee=item.assignee,
+                confidence_score=item.confidence_score if item.confidence_score is not None else 0.5,
+                confidence_reason=item.confidence_reason
             ))
 
         # Step 6: Save email attribution records (which emails were used as context)

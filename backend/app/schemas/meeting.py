@@ -1,14 +1,27 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Union
 
 class ActionItem(BaseModel):
     task: str = Field(description="The specific action item or task to be completed.")
     assignee: str = Field(description="The person responsible for the task. Use 'Unassigned' if not mentioned.")
+    confidence_score: float = Field(default=0.5, description="Confidence score from 0.0 to 1.0 (e.g. 0.95 for 95%)")
+    confidence_reason: Optional[str] = Field(default=None, description="Brief explanation of confidence level")
+
+class KeyDecision(BaseModel):
+    decision_text: str = Field(description="The decision made during the meeting")
+    confidence_score: float = Field(default=0.5, description="Confidence score from 0.0 to 1.0")
+    confidence_reason: Optional[str] = Field(default=None, description="Brief explanation of confidence level")
+
+class SummaryBullet(BaseModel):
+    point: str = Field(description="A single summary bullet point")
+    confidence_score: float = Field(default=0.5, description="Confidence score from 0.0 to 1.0")
+    confidence_reason: Optional[str] = Field(default=None, description="Brief explanation of confidence level")
 
 class MeetingInsights(BaseModel):
     full_transcript: str = Field(description="The complete, word-for-word transcript of the entire audio recording. Do not summarize this field.")
     summary: str = Field(description="A brief, executive summary of the overall meeting.")
-    key_decisions: List[str] = Field(description="A list of key decisions that were made during the meeting.")
+    summary_bullets: List[SummaryBullet] = Field(default=[], description="Structured bullet points with confidence scores.")
+    key_decisions: List[Union[KeyDecision, str]] = Field(description="A list of key decisions made during the meeting.")
     action_items: List[ActionItem] = Field(description="A list of action items assigned to individuals.")
 
 from datetime import datetime, timezone
@@ -42,6 +55,8 @@ class DBActionItem(BaseModel):
     task: str
     assignee: Optional[str]
     is_completed: bool
+    confidence_score: Optional[float] = 0.5
+    confidence_reason: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -49,6 +64,8 @@ class DBActionItem(BaseModel):
 class DBKeyDecision(BaseModel):
     id: int
     decision_text: str
+    confidence_score: Optional[float] = 0.5
+    confidence_reason: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -56,6 +73,7 @@ class DBKeyDecision(BaseModel):
 class DBMeetingInsight(BaseModel):
     id: int
     summary: str
+    summary_json: Optional[str] = None
     action_items: List[DBActionItem]
     key_decisions: List[DBKeyDecision]
 
