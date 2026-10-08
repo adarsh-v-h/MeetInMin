@@ -2,14 +2,16 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ChevronLeft, Calendar, Clock, Key, Download, 
-  CheckSquare, FileText, Lightbulb, AlertCircle, Mail, ExternalLink, Edit2, Check, X
+  CheckSquare, FileText, Lightbulb, AlertCircle, Mail, ExternalLink, Edit2, Check, X,
+  Upload, Music, FileAudio
 } from 'lucide-react';
 
 const getStatusConfig = (status) => {
   const normalized = (status || '').toLowerCase();
   if (normalized === 'completed') return { color: '#10b981', bg: 'rgba(16, 185, 129, 0.1)', text: 'Completed', isProcessing: false };
   if (normalized === 'failed') return { color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)', text: 'Failed', isProcessing: false };
-  return { color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.1)', text: status.charAt(0).toUpperCase() + status.slice(1), isProcessing: true };
+  if (normalized === 'created') return { color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)', text: 'Awaiting Audio', isProcessing: false };
+  return { color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.1)', text: status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Processing', isProcessing: true };
 };
 
 const formatDuration = (seconds) => {
@@ -287,6 +289,10 @@ const MeetingDetails = () => {
   const [downloading, setDownloading] = useState(false);
   const [downloadingTranscript, setDownloadingTranscript] = useState(false);
 
+  const [selectedAudioFile, setSelectedAudioFile] = useState(null);
+  const [uploadingAudio, setUploadingAudio] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+
   const fetchMeeting = useCallback(async () => {
     try {
       setLoading(true);
@@ -308,6 +314,50 @@ const MeetingDetails = () => {
   useEffect(() => {
     fetchMeeting();
   }, [fetchMeeting]);
+
+  // Auto-poll while processing audio
+  useEffect(() => {
+    if (!meeting) return;
+    const proc = ['uploading', 'transcribing', 'analyzing', 'uploaded'].includes((meeting.status || '').toLowerCase());
+    if (proc) {
+      const interval = setInterval(() => {
+        fetchMeeting();
+      }, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [meeting?.status, fetchMeeting]);
+
+  const handleAudioUpload = async (e) => {
+    e.preventDefault();
+    if (!selectedAudioFile) return;
+
+    try {
+      setUploadingAudio(true);
+      setUploadError(null);
+      const formData = new FormData();
+      formData.append('file', selectedAudioFile);
+
+      const response = await fetch(`http://localhost:8000/v1/meetings/${id}/upload`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Audio upload failed');
+      }
+
+      setSelectedAudioFile(null);
+      fetchMeeting();
+    } catch (err) {
+      setUploadError(err.message || 'Audio upload failed');
+    } finally {
+      setUploadingAudio(false);
+    }
+  };
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleText, setTitleText] = useState('');
@@ -519,18 +569,18 @@ const MeetingDetails = () => {
         </div>
 
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-          {!isProcessing && meeting.transcript && (
+          {meeting.transcript?.raw_text && (
             <button 
               onClick={handleDownloadTranscript}
-              disabled={downloadingTranscript}
+              disabled={downloadingTranscript || isProcessing || meeting.status === 'created'}
+              title={meeting.status === 'created' ? 'Upload audio to enable transcript download' : ''}
               style={{
                 background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)',
                 borderRadius: '8px', padding: '0.75rem 1.25rem', color: 'rgba(255,255,255,0.8)', fontWeight: '500',
-                display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: downloadingTranscript ? 'wait' : 'pointer',
+                display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: downloadingTranscript ? 'wait' : (isProcessing || meeting.status === 'created') ? 'not-allowed' : 'pointer',
+                opacity: (isProcessing || meeting.status === 'created') ? 0.5 : 1,
                 transition: 'background 0.2s'
               }}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
             >
               <Download size={16} />
               {downloadingTranscript ? 'Downloading...' : 'Download Transcript'}
@@ -538,15 +588,15 @@ const MeetingDetails = () => {
           )}
           <button 
             onClick={handleDownload}
-            disabled={downloading}
+            disabled={downloading || meeting.status === 'created' || isProcessing}
+            title={meeting.status === 'created' ? 'Upload audio to enable audio download' : ''}
             style={{
               background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
               borderRadius: '8px', padding: '0.75rem 1.25rem', color: '#fff', fontWeight: '500',
-              display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: downloading ? 'wait' : 'pointer',
+              display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: downloading ? 'wait' : (meeting.status === 'created' || isProcessing) ? 'not-allowed' : 'pointer',
+              opacity: (meeting.status === 'created' || isProcessing) ? 0.5 : 1,
               transition: 'background 0.2s'
             }}
-            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
           >
             <Download size={18} />
             {downloading ? 'Downloading...' : 'Download Audio'}
@@ -560,12 +610,79 @@ const MeetingDetails = () => {
         {/* Left Column: AI Intelligence */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           
-          <Section title="Executive Summary" icon={<FileText size={18} color="#a855f7" />}>
-            {isProcessing ? <ProcessingPlaceholder text="Generating summary..." /> : 
-             !meeting.insight ? <span style={{color: 'rgba(255,255,255,0.4)'}}>No summary available.</span> :
-             <SummaryBullets text={meeting.insight.summary} summaryJson={meeting.insight.summary_json} />
-            }
-          </Section>
+          {meeting.status === 'created' ? (
+            <Section title="Upload Meeting Audio" icon={<Upload size={18} color="#f59e0b" />}>
+              <form onSubmit={handleAudioUpload} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', padding: '0.5rem 0' }}>
+                <div style={{
+                  border: '2px dashed rgba(255,255,255,0.2)', borderRadius: '12px', padding: '2.5rem 1.5rem',
+                  textAlign: 'center', background: 'rgba(255,255,255,0.02)', cursor: 'pointer',
+                  transition: 'border-color 0.2s'
+                }}>
+                  <input
+                    type="file"
+                    id="audio-upload-input"
+                    accept=".webm,.mp3,.wav,.m4a,.aac,.flac,.ogg,.mp4"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setSelectedAudioFile(e.target.files[0]);
+                      }
+                    }}
+                  />
+                  <label htmlFor="audio-upload-input" style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(245,158,11,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <FileAudio size={24} color="#f59e0b" />
+                    </div>
+                    {selectedAudioFile ? (
+                      <div>
+                        <div style={{ color: '#fff', fontWeight: 'bold', fontSize: '1rem' }}>{selectedAudioFile.name}</div>
+                        <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+                          {(selectedAudioFile.size / (1024 * 1024)).toFixed(2)} MB
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <div style={{ color: '#fff', fontWeight: '600', fontSize: '1rem' }}>Click or drag audio file to upload</div>
+                        <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                          Supports .webm, .mp3, .wav, .m4a, .aac, .mp4 audio files
+                        </div>
+                      </div>
+                    )}
+                  </label>
+                </div>
+
+                {uploadError && (
+                  <div style={{ color: '#ef4444', fontSize: '0.85rem', background: 'rgba(239,68,68,0.1)', padding: '0.6rem 0.85rem', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.2)' }}>
+                    {uploadError}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={!selectedAudioFile || uploadingAudio}
+                  style={{
+                    padding: '0.85rem 1.5rem', borderRadius: '10px',
+                    background: selectedAudioFile ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 'rgba(255,255,255,0.1)',
+                    border: 'none', color: '#fff', fontWeight: 'bold', fontSize: '0.95rem',
+                    cursor: (!selectedAudioFile || uploadingAudio) ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                    opacity: (!selectedAudioFile || uploadingAudio) ? 0.6 : 1,
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <Upload size={18} />
+                  {uploadingAudio ? 'Uploading & Queuing Audio...' : 'Upload & Analyze Audio'}
+                </button>
+              </form>
+            </Section>
+          ) : (
+            <Section title="Executive Summary" icon={<FileText size={18} color="#a855f7" />}>
+              {isProcessing ? <ProcessingPlaceholder text="Generating summary..." /> : 
+               !meeting.insight ? <span style={{color: 'rgba(255,255,255,0.4)'}}>No summary available.</span> :
+               <SummaryBullets text={meeting.insight.summary} summaryJson={meeting.insight.summary_json} />
+              }
+            </Section>
+          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
             <Section title="Action Items" icon={<CheckSquare size={18} color="#10b981" />}>

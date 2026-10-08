@@ -28,6 +28,9 @@ class MeetingInsights(BaseModel):
 class MeetingUpdate(BaseModel):
     title: str = Field(min_length=2, max_length=255, description="Meeting title must be between 2 and 255 characters.")
 
+class MeetingCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=255, description="Title for the new meeting (2-255 characters)")
+
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field, field_serializer, field_validator
 

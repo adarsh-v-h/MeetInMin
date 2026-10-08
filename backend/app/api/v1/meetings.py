@@ -17,7 +17,7 @@ router = APIRouter()
 import logging
 from app.db.database import SessionLocal
 from app.db.models import Meeting, Transcript, MeetingInsight, ActionItem, KeyDecision, EmailContextSource
-from app.schemas.meeting import PaginatedMeetings, MeetingDetailResponse, MeetingUpdate
+from app.schemas.meeting import PaginatedMeetings, MeetingDetailResponse, MeetingUpdate, MeetingCreate
 from app.api.deps import CurrentUser
 
 logger = logging.getLogger(__name__)
@@ -245,6 +245,85 @@ async def upload_meeting_audio(
         "message": f"Audio uploaded successfully by {user.username}",
         "file_name": unique_filename,
     }
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+async def create_meeting(
+    payload: MeetingCreate,
+    current_user: CurrentUser,
+    db: DbSession
+):
+    clean_title = payload.title.strip()
+    if len(clean_title) < 2 or len(clean_title) > 255:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Meeting title must be between 2 and 255 characters."
+        )
+
+    from datetime import datetime, timezone
+    now_utc = datetime.now(timezone.utc)
+
+    new_meeting = Meeting(
+        user_id=current_user.id,
+        title=clean_title,
+        status="created",
+        audio_file_path=None,
+        api_key_id=None,
+        created_at=now_utc,
+    )
+    db.add(new_meeting)
+    db.commit()
+    db.refresh(new_meeting)
+
+    return {
+        "status": "success",
+        "id": new_meeting.id,
+        "title": new_meeting.title,
+        "meeting_status": new_meeting.status
+    }
+
+
+@router.post("/{meeting_id}/upload")
+async def upload_audio_to_meeting(
+    meeting_id: str,
+    current_user: CurrentUser,
+    db: DbSession,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...)
+):
+    meeting = db.execute(
+        select(Meeting).where(Meeting.id == meeting_id, Meeting.user_id == current_user.id)
+    ).scalar_one_or_none()
+
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+
+    if meeting.status in ["transcribing", "analyzing"]:
+        raise HTTPException(status_code=400, detail="Meeting audio is already being processed.")
+
+    timestamp = int(time.time())
+    file_extension = file.filename.split(".")[-1] if "." in file.filename else "webm"
+    unique_filename = f"{current_user.username}_{str(uuid.uuid4())[:8]}_{timestamp}.{file_extension}"
+    file_path = os.path.join(UPLOAD_DIR, unique_filename)
+
+    import aiofiles
+    async with aiofiles.open(file_path, "wb") as out_file:
+        while content := await file.read(1024 * 1024):
+            await out_file.write(content)
+
+    meeting.audio_file_path = file_path
+    meeting.status = "uploaded"
+    db.commit()
+
+    audio_queue.put_nowait((meeting.id, file_path))
+
+    return {
+        "status": "success",
+        "message": "Audio uploaded successfully and queued for processing.",
+        "meeting_id": meeting.id,
+        "file_name": unique_filename
+    }
+
 
 @router.get("", response_model=PaginatedMeetings)
 async def list_meetings(

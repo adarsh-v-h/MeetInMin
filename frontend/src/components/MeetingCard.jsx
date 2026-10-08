@@ -11,12 +11,15 @@ const getStatusConfig = (status) => {
   if (normalized === 'failed') {
     return { color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)', text: 'Failed', isProcessing: false };
   }
+  if (normalized === 'created') {
+    return { color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)', text: 'Awaiting Audio', isProcessing: false };
+  }
   
   // Default to processing state for uploading, transcribing, analyzing, recording
   return { 
     color: '#3b82f6', 
     bg: 'rgba(59, 130, 246, 0.1)', 
-    text: status.charAt(0).toUpperCase() + status.slice(1), 
+    text: status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Processing', 
     isProcessing: true 
   };
 };
