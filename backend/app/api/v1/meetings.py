@@ -1,7 +1,7 @@
-from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException, status, Query, Form
 from fastapi.responses import FileResponse
 from app.api.deps import DbSession
-from app.db.models import User, APIKey
+from app.db.models import User, APIKey, Project
 from sqlalchemy import select, func
 from sqlalchemy.orm import joinedload
 import hashlib
@@ -10,6 +10,7 @@ import os
 import uuid
 import time
 import asyncio
+from typing import Optional
 from app.services.queue_manager import audio_queue
 
 router = APIRouter()
@@ -39,20 +40,19 @@ async def process_audio_background(meeting_id: str, file_path: str):
         meeting.status = "transcribing"
         db.commit()
 
-        # Step 1: Transcribe audio with Zoho Speech-to-Text
-        raw_transcript = await transcribe_audio_with_zoho(file_path)
-
-        if not raw_transcript:
-            logger.error(f"Zoho STT produced empty transcript for meeting {meeting_id}")
-            meeting.status = "failed"
-            db.commit()
-            return
-
-        # Step 2: Save raw transcript to DB as source of truth
+        # Step 1: Transcribe audio with Zoho Speech-to-Text (or use pre-existing transcript)
         existing_transcript = db.query(Transcript).filter(Transcript.meeting_id == meeting.id).first()
-        if existing_transcript:
-            existing_transcript.raw_text = raw_transcript
+        if existing_transcript and existing_transcript.raw_text:
+            raw_transcript = existing_transcript.raw_text
+            logger.info(f"📝 Reusing pre-existing transcript for meeting {meeting_id}.")
         else:
+            raw_transcript = await transcribe_audio_with_zoho(file_path)
+            if not raw_transcript:
+                logger.error(f"Zoho STT produced empty transcript for meeting {meeting_id}")
+                meeting.status = "failed"
+                db.commit()
+                return
+
             new_transcript = Transcript(meeting_id=meeting.id, raw_text=raw_transcript)
             db.add(new_transcript)
 
@@ -83,12 +83,23 @@ async def process_audio_background(meeting_id: str, file_path: str):
                 logger.warning(f"Gmail context build failed for meeting {meeting_id} ({gmail_err}). Proceeding without email context.")
                 email_context = None
                 attribution_records = []
-        else:
-            logger.info(f"📭 No Gmail connection for this user. Proceeding with transcript-only analysis.")
+        # Step 4: Fetch Project Context if meeting belongs to a project
+        project_context = None
+        if meeting.project_id:
+            logger.info(f"🧠 Meeting belongs to project {meeting.project_id}. Assembling project memory context...")
+            try:
+                from app.services.project.context_builder import build_project_context
+                project_context = build_project_context(meeting.project_id, db)
+            except Exception as proj_err:
+                logger.warning(f"Failed to build project context for meeting {meeting_id}: {proj_err}")
+                project_context = None
 
-        # Step 4: Analyze transcript with Zoho GLM (with email context if available)
-        insights = await analyze_transcript_with_zoho_glm(raw_transcript, email_context=email_context)
-
+        # Step 5: Analyze transcript with Zoho GLM (with email context & project context if available)
+        insights = await analyze_transcript_with_zoho_glm(
+            raw_transcript,
+            email_context=email_context,
+            project_context=project_context
+        )
 
         if not insights:
             logger.error(f"Zoho GLM returned no insights for meeting {meeting_id}")
@@ -96,7 +107,7 @@ async def process_audio_background(meeting_id: str, file_path: str):
             db.commit()
             return
 
-        # Step 5: Save Insights to DB
+        # Step 6: Save Insights to DB
         if hasattr(insights, "meeting_title") and insights.meeting_title and insights.meeting_title.strip():
             meeting.title = insights.meeting_title.strip()
 
@@ -146,7 +157,7 @@ async def process_audio_background(meeting_id: str, file_path: str):
                 confidence_reason=item.confidence_reason
             ))
 
-        # Step 6: Save email attribution records (which emails were used as context)
+        # Save email attribution records (which emails were used as context)
         if attribution_records:
             # Clear any existing attribution records for idempotency
             db.query(EmailContextSource).filter(EmailContextSource.meeting_id == meeting.id).delete()
@@ -164,6 +175,14 @@ async def process_audio_background(meeting_id: str, file_path: str):
         meeting.status = "completed"
         db.commit()
         logger.info(f"✨ Successfully analyzed and saved meeting {meeting_id} with Zoho AI!")
+
+        # Step 7: Trigger Stage 2 Project Memory Delta Update if meeting belongs to a project
+        if meeting.project_id:
+            try:
+                from app.services.project.memory_engine import process_project_memory_update
+                await process_project_memory_update(meeting.id, db)
+            except Exception as mem_err:
+                logger.error(f"Stage 2 Project Memory Update failed for meeting {meeting_id}: {mem_err}")
 
     except Exception as e:
         logger.error(f"Background task failed for meeting {meeting_id}: {e}")
@@ -186,6 +205,7 @@ async def upload_meeting_audio(
     api_key: str,
     db: DbSession,
     background_tasks: BackgroundTasks,
+    project_id: Optional[str] = Query(None),
     file: UploadFile = File(...)
 ):
     # 1. Verify the API Key securely by checking its hash against the APIKey table
@@ -208,6 +228,13 @@ async def upload_meeting_audio(
     api_key_record.last_used_at = func.now()
     user = api_key_record.user
 
+    if project_id:
+        proj = db.execute(
+            select(Project).where(Project.id == project_id, Project.user_id == user.id)
+        ).scalar_one_or_none()
+        if not proj:
+            raise HTTPException(status_code=404, detail="Specified project not found")
+
     # 2. Generate a secure, unique filename: username_uniqueId_timestamp.webm
     timestamp = int(time.time())
     file_extension = file.filename.split(".")[-1] if "." in file.filename else "webm"
@@ -227,6 +254,7 @@ async def upload_meeting_audio(
     # Create the Meeting record in the DB first
     new_meeting = Meeting(
         user_id=user.id,
+        project_id=project_id,
         api_key_id=api_key_record.id,
         title=f"Meeting on {now_utc.strftime('%b %d, %Y')}",
         audio_file_path=file_path,
@@ -244,6 +272,8 @@ async def upload_meeting_audio(
         "status": "success", 
         "message": f"Audio uploaded successfully by {user.username}",
         "file_name": unique_filename,
+        "meeting_id": new_meeting.id,
+        "project_id": new_meeting.project_id,
     }
 
 
@@ -260,11 +290,19 @@ async def create_meeting(
             detail="Meeting title must be between 2 and 255 characters."
         )
 
+    if payload.project_id:
+        proj = db.execute(
+            select(Project).where(Project.id == payload.project_id, Project.user_id == current_user.id)
+        ).scalar_one_or_none()
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+
     from datetime import datetime, timezone
     now_utc = datetime.now(timezone.utc)
 
     new_meeting = Meeting(
         user_id=current_user.id,
+        project_id=payload.project_id,
         title=clean_title,
         status="created",
         audio_file_path=None,
@@ -279,7 +317,8 @@ async def create_meeting(
         "status": "success",
         "id": new_meeting.id,
         "title": new_meeting.title,
-        "meeting_status": new_meeting.status
+        "meeting_status": new_meeting.status,
+        "project_id": new_meeting.project_id,
     }
 
 
@@ -330,20 +369,32 @@ async def list_meetings(
     current_user: CurrentUser,
     db: DbSession,
     page: int = 1,
-    limit: int = 10
+    limit: int = 10,
+    project_id: Optional[str] = Query(None)
 ):
     offset = (page - 1) * limit
     
-    # Efficiently load meetings and their associated api_key
     query = select(Meeting).options(
-        joinedload(Meeting.api_key)
-    ).where(Meeting.user_id == current_user.id).order_by(Meeting.created_at.desc())
-    
-    total = db.execute(select(func.count(Meeting.id)).where(Meeting.user_id == current_user.id)).scalar()
+        joinedload(Meeting.api_key),
+        joinedload(Meeting.project)
+    ).where(Meeting.user_id == current_user.id)
+
+    if project_id:
+        if project_id.lower() in ["standalone", "none", "null"]:
+            query = query.where(Meeting.project_id.is_(None))
+            total_stmt = select(func.count(Meeting.id)).where(Meeting.user_id == current_user.id, Meeting.project_id.is_(None))
+        else:
+            query = query.where(Meeting.project_id == project_id)
+            total_stmt = select(func.count(Meeting.id)).where(Meeting.user_id == current_user.id, Meeting.project_id == project_id)
+    else:
+        total_stmt = select(func.count(Meeting.id)).where(Meeting.user_id == current_user.id)
+
+    query = query.order_by(Meeting.created_at.desc())
+    total = db.execute(total_stmt).scalar()
     
     meetings = db.execute(query.offset(offset).limit(limit)).scalars().all()
     
-    # Map to schema manually to include api_key_name
+    # Map to schema manually to include api_key_name and project info
     items = []
     for m in meetings:
         items.append({
@@ -352,7 +403,9 @@ async def list_meetings(
             "created_at": m.created_at,
             "status": m.status,
             "duration": m.duration,
-            "api_key_name": m.api_key.name if m.api_key else None
+            "api_key_name": m.api_key.name if m.api_key else None,
+            "project_id": m.project_id,
+            "project_name": m.project.name if m.project else None,
         })
         
     return PaginatedMeetings(
@@ -364,10 +417,11 @@ async def list_meetings(
 
 @router.get("/{meeting_id}", response_model=MeetingDetailResponse)
 async def get_meeting_details(meeting_id: str, current_user: CurrentUser, db: DbSession):
-    # Eagerly load transcript, insight, and related nested objects
+    # Eagerly load transcript, insight, project, and related nested objects
     meeting = db.execute(
         select(Meeting).options(
             joinedload(Meeting.api_key),
+            joinedload(Meeting.project),
             joinedload(Meeting.transcript),
             joinedload(Meeting.insight).joinedload(MeetingInsight.action_items),
             joinedload(Meeting.insight).joinedload(MeetingInsight.key_decisions),
@@ -385,6 +439,8 @@ async def get_meeting_details(meeting_id: str, current_user: CurrentUser, db: Db
         "status": meeting.status,
         "duration": meeting.duration,
         "api_key_name": meeting.api_key.name if meeting.api_key else None,
+        "project_id": meeting.project_id,
+        "project_name": meeting.project.name if meeting.project else None,
         "transcript": meeting.transcript,
         "insight": meeting.insight,
         "email_context_sources": meeting.email_context_sources or [],
@@ -483,26 +539,42 @@ async def update_meeting(
     db: DbSession
 ):
     meeting = db.execute(
-        select(Meeting).where(Meeting.id == meeting_id, Meeting.user_id == current_user.id)
-    ).scalar_one_or_none()
+        select(Meeting).options(joinedload(Meeting.project)).where(Meeting.id == meeting_id, Meeting.user_id == current_user.id)
+    ).unique().scalar_one_or_none()
     
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
         
-    clean_title = update_data.title.strip() if update_data.title else ""
-    if len(clean_title) < 2 or len(clean_title) > 255:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Meeting title must be between 2 and 255 characters."
-        )
+    if update_data.title is not None:
+        clean_title = update_data.title.strip()
+        if len(clean_title) < 2 or len(clean_title) > 255:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Meeting title must be between 2 and 255 characters."
+            )
+        meeting.title = clean_title
+
+    if update_data.project_id is not None:
+        if update_data.project_id == "" or update_data.project_id.lower() in ["null", "none"]:
+            meeting.project_id = None
+        else:
+            proj = db.execute(
+                select(Project).where(Project.id == update_data.project_id, Project.user_id == current_user.id)
+            ).scalar_one_or_none()
+            if not proj:
+                raise HTTPException(status_code=404, detail="Project not found")
+            meeting.project_id = update_data.project_id
         
-    meeting.title = clean_title
     db.commit()
     db.refresh(meeting)
         
     return {
         "status": "success",
-        "title": meeting.title
+        "id": meeting.id,
+        "title": meeting.title,
+        "project_id": meeting.project_id,
+        "project_name": meeting.project.name if meeting.project else None,
     }
+
 
 

@@ -6,6 +6,8 @@ import Login from './pages/Login';
 import CompleteProfile from './pages/CompleteProfile';
 import AppShell from './components/AppShell';
 import Dashboard from './pages/Dashboard';
+import Projects from './pages/Projects';
+import ProjectDetails from './pages/ProjectDetails';
 import MeetingDetails from './pages/MeetingDetails';
 import ApiKeys from './pages/ApiKeys';
 import Settings from './pages/Settings';
@@ -24,6 +26,8 @@ function App() {
         {/* Private Dashboard Routes wrapped in AppShell */}
         <Route element={<AppShell />}>
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/projects" element={<Projects />} />
+          <Route path="/projects/:projectId" element={<ProjectDetails />} />
           <Route path="/meetings/:id" element={<MeetingDetails />} />
           <Route path="/api-keys" element={<ApiKeys />} />
           <Route path="/settings" element={<Settings />} />

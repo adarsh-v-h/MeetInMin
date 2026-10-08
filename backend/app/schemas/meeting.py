@@ -26,10 +26,12 @@ class MeetingInsights(BaseModel):
     action_items: List[ActionItem] = Field(description="A list of action items assigned to individuals.")
 
 class MeetingUpdate(BaseModel):
-    title: str = Field(min_length=2, max_length=255, description="Meeting title must be between 2 and 255 characters.")
+    title: Optional[str] = Field(default=None, min_length=2, max_length=255, description="Meeting title must be between 2 and 255 characters.")
+    project_id: Optional[str] = Field(default=None, description="Assign to project_id or null for standalone.")
 
 class MeetingCreate(BaseModel):
     title: str = Field(min_length=2, max_length=255, description="Title for the new meeting (2-255 characters)")
+    project_id: Optional[str] = Field(default=None, description="Optional project_id to assign meeting to a project.")
 
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field, field_serializer, field_validator
@@ -41,6 +43,8 @@ class MeetingSummaryResponse(BaseModel):
     status: str
     duration: Optional[int]
     api_key_name: Optional[str]
+    project_id: Optional[str] = None
+    project_name: Optional[str] = None
 
     @field_validator('title', mode='before')
     def validate_title(cls, v):
@@ -128,6 +132,8 @@ class MeetingDetailResponse(BaseModel):
     status: str
     duration: Optional[int]
     api_key_name: Optional[str]
+    project_id: Optional[str] = None
+    project_name: Optional[str] = None
 
     @field_validator('title', mode='before')
     def validate_title(cls, v):

@@ -7,6 +7,8 @@ import MeetingCardSkeleton from '../components/MeetingCardSkeleton';
 const Dashboard = () => {
   const navigate = useNavigate();
   const [meetings, setMeetings] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [selectedProjectId, setSelectedProjectId] = useState('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [page, setPage] = useState(1);
@@ -14,8 +16,28 @@ const Dashboard = () => {
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [newProjectSelectId, setNewProjectSelectId] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState(null);
+
+  const fetchProjects = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('/v1/projects', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setProjects(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch projects:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchProjects();
+  }, []);
 
   const fetchMeetings = useCallback(async () => {
     try {
@@ -23,7 +45,12 @@ const Dashboard = () => {
       setError(null);
       const token = localStorage.getItem('token');
       
-      const response = await fetch(`http://localhost:8000/v1/meetings?page=${page}&limit=12`, {
+      let url = `/v1/meetings?page=${page}&limit=12`;
+      if (selectedProjectId && selectedProjectId !== 'all') {
+        url += `&project_id=${selectedProjectId}`;
+      }
+
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -41,7 +68,7 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [page]);
+  }, [page, selectedProjectId]);
 
   useEffect(() => {
     fetchMeetings();
@@ -59,13 +86,16 @@ const Dashboard = () => {
       setCreating(true);
       setCreateError(null);
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:8000/v1/meetings', {
+      const response = await fetch('/v1/meetings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ title: cleanTitle })
+        body: JSON.stringify({
+          title: cleanTitle,
+          project_id: newProjectSelectId || null
+        })
       });
 
       if (!response.ok) {
@@ -76,6 +106,7 @@ const Dashboard = () => {
       const data = await response.json();
       setShowCreateModal(false);
       setNewTitle('');
+      setNewProjectSelectId('');
       navigate(`/meetings/${data.id}`);
     } catch (err) {
       setCreateError(err.message || 'Failed to create meeting');
@@ -117,7 +148,7 @@ const Dashboard = () => {
         </button>
       </div>
 
-      {/* Controls: Search and Filter (Dummy for MVP visual layout as requested) */}
+      {/* Controls: Search and Project Filter */}
       <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
         <div style={{
           flex: 1,
@@ -138,18 +169,30 @@ const Dashboard = () => {
             }} 
           />
         </div>
-        <button style={{
-          background: 'rgba(255,255,255,0.05)',
-          border: '1px solid rgba(255,255,255,0.1)',
-          borderRadius: '8px',
-          padding: '0.5rem 1rem',
-          color: '#fff',
-          display: 'flex', alignItems: 'center', gap: '0.5rem',
-          cursor: 'pointer'
-        }}>
-          <Filter size={18} />
-          Filters
-        </button>
+
+        {/* Project Filter Selector */}
+        <select
+          value={selectedProjectId}
+          onChange={(e) => { setSelectedProjectId(e.target.value); setPage(1); }}
+          style={{
+            background: 'rgba(255,255,255,0.05)',
+            border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: '8px',
+            padding: '0.6rem 1rem',
+            color: '#fff',
+            fontSize: '0.9rem',
+            outline: 'none',
+            cursor: 'pointer'
+          }}
+        >
+          <option value="all" style={{ background: '#141414', color: '#fff' }}>All Projects & Standalone</option>
+          <option value="standalone" style={{ background: '#141414', color: '#fff' }}>Standalone Meetings Only</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id} style={{ background: '#141414', color: '#fff' }}>
+              Project: {p.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Main Content Area */}
@@ -186,9 +229,9 @@ const Dashboard = () => {
           }}>
             <Search size={32} color="rgba(255,255,255,0.5)" />
           </div>
-          <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>No meetings yet</h3>
+          <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>No meetings found</h3>
           <p style={{ color: 'rgba(255,255,255,0.6)', maxWidth: '400px', margin: '0 auto' }}>
-            Start a meeting using the MeetInMin browser extension and your recorded meetings will appear here automatically.
+            No meetings found for the selected filter. Try changing your project filter or create a new meeting.
           </p>
         </div>
       ) : (
@@ -276,6 +319,28 @@ const Dashboard = () => {
                     fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box'
                   }}
                 />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', marginBottom: '0.5rem', fontWeight: '500' }}>
+                  Assign to Project (Optional)
+                </label>
+                <select
+                  value={newProjectSelectId}
+                  onChange={(e) => setNewProjectSelectId(e.target.value)}
+                  style={{
+                    width: '100%', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff',
+                    fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box', cursor: 'pointer'
+                  }}
+                >
+                  <option value="" style={{ background: '#141414', color: '#fff' }}>None (Standalone Meeting)</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id} style={{ background: '#141414', color: '#fff' }}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {createError && (
