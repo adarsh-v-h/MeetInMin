@@ -7,6 +7,7 @@
 ## ⚡ Key Highlights
 
 - **Zero-Bot Ingestion**: Captures high-fidelity tab & microphone audio via a lightweight Chrome extension (`MeetInMinExe`) — no meeting room bots required.
+- **Dual Ingestion Support**: Record live calls via the Chrome extension OR create meetings and upload pre-recorded audio files (`.webm`, `.mp3`, `.wav`, `.m4a`, `.mp4`) directly from the Web Dashboard.
 - **Zoho AI Intelligence**: Powered by Zoho Catalyst Zia STT (with automatic 4-minute audio chunking) and Zoho GLM (`crm-di-glm47b_30b_it`).
 - **Itemized Confidence Scoring**: Evaluates summary bullet points, key decisions, and action items on a `0.00` to `1.00` confidence scale (High/Medium/Low badges with explanation tooltips).
 - **AI Smart Titles & Custom Renaming**: Automatically generates 3-6 word descriptive meeting titles and supports inline manual title renaming (`PATCH /v1/meetings/{id}`).

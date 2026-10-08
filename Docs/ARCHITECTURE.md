@@ -146,7 +146,17 @@ MeetInMin uses Zoho GLM (`crm-di-glm47b_30b_it`) to transform unstructured trans
 
 ---
 
-### 5. Startup Auto-Migrations & Queue Recovery (`app/db/database.py`)
+### 5. Manual Meeting Creation & Web Audio Upload Architecture (`app/api/v1/meetings.py`)
+MeetInMin supports dual audio ingestion streams: (1) silent tab recording via the Chrome extension, and (2) direct dashboard meeting creation with manual web audio uploads.
+
+* **Draft Meeting Creation (`POST /v1/meetings`)**: Creates a placeholder meeting record with a validated title (2–255 characters), setting `status="created"`, `audio_file_path=None`, and `api_key_id=None`.
+* **Web Dashboard Upload (`POST /v1/meetings/{meeting_id}/upload`)**: Accepts user-uploaded audio files (`.webm`, `.mp3`, `.wav`, `.m4a`, `.mp4`, `.flac`), saves them asynchronously to disk, updates status to `"uploaded"`, and pushes the meeting into `audio_queue`.
+* **Automatic `ffmpeg` Standardization**: Audio files uploaded via the frontend are automatically processed through the `split_audio_into_wav_chunks` pipeline, converting them to 16kHz mono WAV chunks before routing to Zoho STT and Zoho GLM.
+* **Inline Renaming (`PATCH /v1/meetings/{meeting_id}`)**: Allows users to rename meeting titles anytime with strict length validation (min 2, max 255 chars).
+
+---
+
+### 6. Startup Auto-Migrations & Queue Recovery (`app/db/database.py`)
 * **Schema Auto-Migrations** (`run_auto_migrations`): On server startup, non-destructive `ALTER TABLE` statements automatically ensure database columns (`summary_json`, `confidence_score`, `confidence_reason`) exist, preventing breaking schema updates on existing deployments.
 * **Sequential Queue Execution** (`queue_manager.py`): An `asyncio.Queue` processes uploaded audio sequentially to prevent Zoho API rate-limiting.
 * **Crash & Restart Recovery** (`app/main.py`): On server startup, MeetInMin scans the database for meetings stuck in `uploaded`, `transcribing`, or `analyzing` status and automatically re-queues them for background completion.
