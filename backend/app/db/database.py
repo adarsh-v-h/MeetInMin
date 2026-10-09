@@ -24,6 +24,7 @@ def run_auto_migrations(db_engine):
         ('action_items', 'confidence_reason', 'TEXT'),
         ('key_decisions', 'confidence_score', 'FLOAT DEFAULT 0.5'),
         ('key_decisions', 'confidence_reason', 'TEXT'),
+        ('meetings', 'project_id', 'VARCHAR(36)'),
     ]
     with db_engine.connect() as conn:
         for table, col, col_type in columns_to_add:
@@ -37,6 +38,10 @@ def run_auto_migrations(db_engine):
             conn.commit()
         except Exception:
             pass
+
+    # Ensure all newly added tables are created automatically
+    from app.db import models  # noqa
+    Base.metadata.create_all(bind=db_engine)
 
 # Run automatic schema migration on startup to ensure backward compatibility
 run_auto_migrations(engine)

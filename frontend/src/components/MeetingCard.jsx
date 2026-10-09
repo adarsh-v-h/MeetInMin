@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Clock, Key, ArrowRight } from 'lucide-react';
+import { Calendar, Clock, Key, ArrowRight, FolderKanban } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const getStatusConfig = (status) => {
@@ -108,10 +108,17 @@ const MeetingCard = ({ meeting }) => {
           <Clock size={14} />
           {formatDuration(meeting.duration)}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Key size={14} />
-          {meeting.api_key_name || 'Unknown Key'}
-        </div>
+        {meeting.project_name ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#60A5FA' }}>
+            <FolderKanban size={14} />
+            <span style={{ fontWeight: '500' }}>{meeting.project_name}</span>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Key size={14} />
+            {meeting.api_key_name || 'Standalone Meeting'}
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
@@ -150,7 +157,7 @@ const MeetingCard = ({ meeting }) => {
               e.stopPropagation();
               const token = localStorage.getItem('token');
               try {
-                await fetch(`http://localhost:8000/v1/meetings/${meeting.id}/retry`, {
+                await fetch(`/v1/meetings/${meeting.id}/retry`, {
                   method: 'POST',
                   headers: { 'Authorization': `Bearer ${token}` }
                 });

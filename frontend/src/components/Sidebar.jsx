@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Key, Merge, Settings, LogOut, User, ChevronDown } from 'lucide-react';
+import { LayoutDashboard, FolderKanban, Key, Merge, Settings, LogOut, User, ChevronDown } from 'lucide-react';
 
 const Sidebar = () => {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -13,6 +13,7 @@ const Sidebar = () => {
 
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: <LayoutDashboard size={20} /> },
+    { name: 'Projects', path: '/projects', icon: <FolderKanban size={20} /> },
     { name: 'API Keys', path: '/api-keys', icon: <Key size={20} /> },
     { name: 'Merge Meetings', path: '#', icon: <Merge size={20} />, locked: true },
     { name: 'Settings', path: '/settings', icon: <Settings size={20} /> },

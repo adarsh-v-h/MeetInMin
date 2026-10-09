@@ -39,17 +39,13 @@ def _clean_json_text(text: str) -> str:
 async def analyze_transcript_with_zoho_glm(
     transcript: str,
     email_context: str | None = None,
+    project_context: str | None = None,
     max_retries: int = 3,
     base_delay: float = 1.5
 ) -> MeetingInsights:
     """
-    Sends the stored transcript (and optional Gmail email context) to Zoho GLM
+    Sends the stored transcript (and optional Gmail email context & project memory context) to Zoho GLM
     to generate structured meeting insights.
-
-    When email_context is provided, it is included in the prompt as supporting
-    context to help GLM produce sharper summaries and more accurate action items.
-    When None, the analysis runs on the transcript alone — producing complete
-    results without any degradation.
 
     Returns a validated MeetingInsights Pydantic object.
     """
@@ -59,6 +55,17 @@ async def analyze_transcript_with_zoho_glm(
     glm_url = settings.glm_url
     model_name = settings.ZOHO_GLM_MODEL
     org_id = settings.org_id
+
+    # Build the project context block for the prompt if available
+    project_context_block = ""
+    if project_context and project_context.strip():
+        project_context_block = f"""
+
+PROJECT CONTEXT & ACCUMULATED MEMORY:
+This meeting belongs to a project with accumulated memory from previous meetings. Use this context to accurately interpret project terminology, active decisions, open action items, and ongoing discussions.
+
+{project_context}
+"""
 
     # Build the email context block for the prompt if available
     email_context_block = ""
@@ -92,7 +99,7 @@ You MUST respond ONLY with a valid, raw JSON object matching this exact schema:
     {
       "decision_text": "Comprehensive decision 1 with context",
       "confidence_score": 0.90,
-      "confidence_reason": "Brief explanation (e.g., 'Direct agreement reached by team')"
+      "confidence_reason": "Direct agreement reached by team"
     }
   ],
   "action_items": [
@@ -100,7 +107,7 @@ You MUST respond ONLY with a valid, raw JSON object matching this exact schema:
       "task": "Specific description of the task or commitment",
       "assignee": "Person assigned (or 'Unassigned' if implicit / not explicitly named)",
       "confidence_score": 0.75,
-      "confidence_reason": "Brief explanation (e.g., 'Assignee inferred from context')"
+      "confidence_reason": "Assignee inferred from context"
     }
   ]
 }
@@ -108,7 +115,7 @@ You MUST respond ONLY with a valid, raw JSON object matching this exact schema:
 CRITICAL INSTRUCTIONS FOR CONFIDENCE SCORING:
 For EVERY summary bullet point, key decision, and action item, evaluate your confidence on a 0.00 to 1.00 float scale:
 - 0.85 - 1.00: High Confidence. Directly and explicitly spoken in the transcript.
-- 0.60 - 0.84: Medium Confidence. Contextually inferred or supported by email context.
+- 0.60 - 0.84: Medium Confidence. Contextually inferred or supported by email/project context.
 - 0.00 - 0.59: Low Confidence. Assumed or speculative due to missing transcript details.
 
 CRITICAL INSTRUCTIONS FOR COMPLETENESS AND QUALITY:
@@ -116,10 +123,10 @@ CRITICAL INSTRUCTIONS FOR COMPLETENESS AND QUALITY:
 2. EXHAUSTIVE KEY DECISIONS: List ALL decisions made, agreed upon, or resolved during the meeting.
 3. COMPREHENSIVE SUMMARY: Do NOT abbreviate or give a vague high-level summary. Cover all main agenda points and key topics discussed.
 4. NO MARKDOWN WRAPPERS: Do NOT include code formatting backticks (no ```json or ```) or intro/outro text. Return ONLY the raw JSON string.
-5. TRANSCRIPT PRIMACY: Base your analysis primarily on the transcript. Supporting email context (if provided) is supplementary only.
+5. TRANSCRIPT PRIMACY: Base your analysis primarily on the transcript. Supporting email/project context (if provided) is supplementary only.
 """
 
-    user_prompt = f"Meeting Transcript:\n\n{transcript}{email_context_block}"
+    user_prompt = f"Meeting Transcript:\n\n{transcript}{project_context_block}{email_context_block}"
 
     payload = {
         "model": model_name,

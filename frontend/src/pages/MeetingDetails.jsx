@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ChevronLeft, Calendar, Clock, Key, Download, 
   CheckSquare, FileText, Lightbulb, AlertCircle, Mail, ExternalLink, Edit2, Check, X,
-  Upload, Music, FileAudio
+  Upload, Music, FileAudio, FolderKanban
 } from 'lucide-react';
 
 const getStatusConfig = (status) => {
@@ -284,6 +284,8 @@ const MeetingDetails = () => {
   const navigate = useNavigate();
   
   const [meeting, setMeeting] = useState(null);
+  const [projects, setProjects] = useState([]);
+  const [updatingProject, setUpdatingProject] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [downloading, setDownloading] = useState(false);
@@ -293,11 +295,29 @@ const MeetingDetails = () => {
   const [uploadingAudio, setUploadingAudio] = useState(false);
   const [uploadError, setUploadError] = useState(null);
 
+  const fetchProjects = async () => {
+    try {
+      const response = await fetch('/v1/projects', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setProjects(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch projects list:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchProjects();
+  }, []);
+
   const fetchMeeting = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`http://localhost:8000/v1/meetings/${id}`, {
+      const response = await fetch(`/v1/meetings/${id}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       
@@ -314,6 +334,40 @@ const MeetingDetails = () => {
   useEffect(() => {
     fetchMeeting();
   }, [fetchMeeting]);
+
+  const handleProjectChange = async (e) => {
+    const newProjectId = e.target.value;
+    if (!meeting || meeting.status !== 'completed') return;
+    
+    setUpdatingProject(true);
+    try {
+      const response = await fetch(`/v1/meetings/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ project_id: newProjectId || "" })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setMeeting(prev => ({
+          ...prev,
+          project_id: data.project_id,
+          project_name: data.project_name
+        }));
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        alert(errData.detail || 'Failed to update project assignment.');
+      }
+    } catch (err) {
+      console.error('Error updating project:', err);
+      alert('Failed to update project assignment.');
+    } finally {
+      setUpdatingProject(false);
+    }
+  };
 
   // Auto-poll while processing audio
   useEffect(() => {
@@ -561,10 +615,40 @@ const MeetingDetails = () => {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '2rem', color: 'rgba(255,255,255,0.6)', fontSize: '0.9rem' }}>
+          <div style={{ display: 'flex', gap: '1.5rem', color: 'rgba(255,255,255,0.6)', fontSize: '0.9rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Calendar size={16} /> {formatDate(meeting.created_at)}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Clock size={16} /> {formatDuration(meeting.duration)}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Key size={16} /> {meeting.api_key_name || 'Unknown Key'}</div>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <FolderKanban size={16} style={{ color: meeting.status === 'completed' ? '#60A5FA' : 'rgba(255,255,255,0.4)' }} />
+              <select
+                disabled={meeting.status !== 'completed' || updatingProject}
+                value={meeting.project_id || ''}
+                onChange={handleProjectChange}
+                title={meeting.status !== 'completed' ? `Only completed meetings can be assigned to a project (Status: ${meeting.status})` : 'Assign meeting to Project'}
+                style={{
+                  background: meeting.status === 'completed' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(255, 255, 255, 0.04)',
+                  border: meeting.status === 'completed' ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '6px',
+                  padding: '0.3rem 0.65rem',
+                  color: meeting.status === 'completed' ? '#fff' : 'rgba(255, 255, 255, 0.4)',
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                  cursor: meeting.status === 'completed' ? 'pointer' : 'not-allowed',
+                  opacity: meeting.status === 'completed' ? 1 : 0.6
+                }}
+              >
+                <option value="" style={{ background: '#141414', color: '#fff' }}>
+                  {meeting.status !== 'completed' ? `Only completed meetings can be assigned (${meeting.status})` : 'Standalone (No Project)'}
+                </option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id} style={{ background: '#141414', color: '#fff' }}>
+                    Project: {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
