@@ -14,8 +14,9 @@
 - **Zoho AI Intelligence**: Powered by Zoho Catalyst Zia STT (with automatic 4-minute audio chunking) and Zoho GLM (`crm-di-glm47b_30b_it`).
 - **Itemized Confidence Scoring**: Evaluates summary bullet points, key decisions, and action items on a `0.00` to `1.00` confidence scale (High/Medium/Low badges with explanation tooltips).
 - **AI Smart Titles & Custom Renaming**: Automatically generates 3-6 word descriptive meeting titles and supports inline manual title renaming (`PATCH /v1/meetings/{id}`).
-- **Mailbox Intelligence**: Connects to your Gmail via OAuth 2.0 to cross-reference email context, attributing decisions and follow-ups to relevant email threads without storing raw email content.
+- **Mailbox Intelligence & Email Replies (Phase 1)**: Connects to your Gmail via OAuth 2.0 to detect pending inbox emails, automatically classifies them into `NEEDS_REPLY`, `NO_REPLY_NEEDED`, or `UNCLEAR` with AI reasoning, generates non-hallucinatory contextual reply drafts with custom user instructions, and allows users to review, edit, and send replies directly from the dashboard.
 - **Local Safety Backup & Auto-Migrations**: Extension offers 1-click local `.webm` file downloads, and the backend performs automatic startup schema migrations.
+
 - **Full Data Ownership**: Download raw transcripts (`.txt`), original meeting audio (`.webm`), and uploaded project documents anytime.
 
 ---

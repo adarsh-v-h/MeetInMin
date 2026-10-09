@@ -9,6 +9,7 @@ import base64
 import logging
 import re
 from datetime import datetime, timezone
+from email.message import EmailMessage
 from email.utils import parsedate_to_datetime
 from typing import Optional
 
@@ -23,6 +24,7 @@ _GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
 class GmailClientError(Exception):
     """Raised when a Gmail API call fails unrecoverably."""
     pass
+
 
 
 async def get_gmail_access_token(
@@ -93,20 +95,60 @@ async def search_gmail_messages(
         return messages
 
 
+def _parse_message_data(data: dict) -> Optional[dict]:
+    """Helper to parse a raw Gmail API message dict into a structured dict."""
+    if not data or "id" not in data:
+        return None
+    message_id = data["id"]
+    thread_id = data.get("threadId", "")
+    payload = data.get("payload", {})
+    headers_list = payload.get("headers", [])
+
+    def _header(name: str) -> str:
+        for h in headers_list:
+            if h.get("name", "").lower() == name.lower():
+                return h.get("value", "")
+        return ""
+
+    subject = _header("Subject") or "(no subject)"
+    sender = _header("From") or "(unknown sender)"
+    recipient = _header("To") or ""
+    message_id_header = _header("Message-ID") or ""
+    in_reply_to = _header("In-Reply-To") or ""
+    date_str = _header("Date")
+
+    received_at = None
+    if date_str:
+        try:
+            received_at = parsedate_to_datetime(date_str)
+            if received_at.tzinfo is None:
+                received_at = received_at.replace(tzinfo=timezone.utc)
+        except Exception:
+            received_at = None
+
+    body_text = _extract_plain_text(payload)
+
+    return {
+        "gmail_message_id": message_id,
+        "thread_id": thread_id,
+        "subject": subject,
+        "sender": sender,
+        "recipient": recipient,
+        "message_id_header": message_id_header,
+        "in_reply_to": in_reply_to,
+        "received_at": received_at,
+        "body_text": body_text[:3000] if body_text else "",
+        "snippet": (body_text[:200] if body_text else ""),
+    }
+
+
 async def get_message_details(
     access_token: str,
     message_id: str,
     timeout: float = 10.0,
 ) -> Optional[dict]:
     """
-    Fetch a single Gmail message and return a structured dict with:
-      - gmail_message_id
-      - subject
-      - sender
-      - received_at (datetime or None)
-      - body_text (plain text, max 3000 chars)
-      - snippet (first 200 chars of body_text — for DB storage)
-
+    Fetch a single Gmail message and return a structured dict with headers, body, and threadId.
     Returns None if the message cannot be fetched or parsed.
     """
     url = f"{_GMAIL_API_BASE}/messages/{message_id}"
@@ -121,43 +163,94 @@ async def get_message_details(
             logger.warning(f"Could not fetch Gmail message {message_id} (HTTP {resp.status_code})")
             return None
 
-        data = resp.json()
-        payload = data.get("payload", {})
-        headers_list = payload.get("headers", [])
-
-        def _header(name: str) -> str:
-            for h in headers_list:
-                if h.get("name", "").lower() == name.lower():
-                    return h.get("value", "")
-            return ""
-
-        subject = _header("Subject") or "(no subject)"
-        sender = _header("From") or "(unknown sender)"
-        date_str = _header("Date")
-
-        received_at = None
-        if date_str:
-            try:
-                received_at = parsedate_to_datetime(date_str)
-                if received_at.tzinfo is None:
-                    received_at = received_at.replace(tzinfo=timezone.utc)
-            except Exception:
-                received_at = None
-
-        body_text = _extract_plain_text(payload)
-
-        return {
-            "gmail_message_id": message_id,
-            "subject": subject,
-            "sender": sender,
-            "received_at": received_at,
-            "body_text": body_text[:3000] if body_text else "",
-            "snippet": (body_text[:200] if body_text else ""),
-        }
+        return _parse_message_data(resp.json())
 
     except httpx.HTTPError as e:
         logger.warning(f"Network error fetching Gmail message {message_id}: {e}")
         return None
+
+
+async def get_thread_details(
+    access_token: str,
+    thread_id: str,
+    timeout: float = 15.0,
+) -> Optional[list[dict]]:
+    """
+    Fetch all messages in a Gmail thread in chronological order.
+    """
+    url = f"{_GMAIL_API_BASE}/threads/{thread_id}"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    params = {"format": "full"}
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, headers=headers, params=params, timeout=timeout)
+
+        if resp.status_code != 200:
+            logger.warning(f"Could not fetch Gmail thread {thread_id} (HTTP {resp.status_code})")
+            return None
+
+        data = resp.json()
+        messages = data.get("messages", [])
+        thread_messages = []
+        for msg in messages:
+            parsed = _parse_message_data(msg)
+            if parsed:
+                thread_messages.append(parsed)
+        return thread_messages
+    except Exception as e:
+        logger.warning(f"Error fetching Gmail thread {thread_id}: {e}")
+        return None
+
+
+async def send_gmail_reply(
+    access_token: str,
+    recipient: str,
+    subject: str,
+    body_text: str,
+    thread_id: Optional[str] = None,
+    in_reply_to_message_id: Optional[str] = None,
+    timeout: float = 15.0,
+) -> dict:
+    """
+    Sends an email reply via the Gmail API users.messages.send endpoint.
+    Uses RFC 2822 base64url encoding and preserves email thread context headers.
+    """
+    msg = EmailMessage()
+    msg["To"] = recipient
+    msg["Subject"] = subject
+    if in_reply_to_message_id:
+        msg["In-Reply-To"] = in_reply_to_message_id
+        msg["References"] = in_reply_to_message_id
+    msg.set_content(body_text)
+
+    raw_bytes = msg.as_bytes()
+    encoded_raw = base64.urlsafe_b64encode(raw_bytes).decode("ascii")
+
+    url = f"{_GMAIL_API_BASE}/messages/send"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "raw": encoded_raw
+    }
+    if thread_id:
+        payload["threadId"] = thread_id
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, headers=headers, json=payload, timeout=timeout)
+
+        if resp.status_code not in (200, 201):
+            logger.error(f"Gmail send API error HTTP {resp.status_code}: {resp.text}")
+            raise GmailClientError(f"Failed to send email via Gmail API: {resp.text}")
+
+        return resp.json()
+    except httpx.HTTPError as e:
+        logger.error(f"HTTP network error sending email via Gmail API: {e}")
+        raise GmailClientError(f"Network error communicating with Gmail API: {e}")
+
 
 
 # ─── Private helpers ──────────────────────────────────────────────────────────

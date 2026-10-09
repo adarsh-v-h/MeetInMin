@@ -1,12 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1 import auth, meetings, api_keys, users, projects
+from app.api.v1 import auth, meetings, api_keys, users, projects, emails
 from app.db.database import engine, Base
-# Import models to ensure they are registered with Base
-# from app.db import models
 
 # For development: create all tables automatically
 Base.metadata.create_all(bind=engine)
+
+
 
 from contextlib import asynccontextmanager
 import asyncio
@@ -81,6 +81,7 @@ app.include_router(users.router, prefix="/v1/users", tags=["Users"])
 app.include_router(api_keys.router, prefix="/v1/api-keys", tags=["API Keys"])
 app.include_router(meetings.router, prefix="/v1/meetings", tags=["Meetings"])
 app.include_router(projects.router, prefix="/v1/projects", tags=["Projects"])
+app.include_router(emails.router, prefix="/v1/emails", tags=["Emails"])
 
 @app.get("/")
 async def root():

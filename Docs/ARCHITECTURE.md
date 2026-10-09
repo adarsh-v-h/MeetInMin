@@ -17,8 +17,10 @@ graph TB
         AUTH["Auth Router<br/>JWT & Google OAuth 2.0"]
         MTG["Meetings Router<br/>Upload, Rename (PATCH), & Downloads"]
         PROJ["Projects Router<br/>Create, List, Memory Sync, & Document Uploads"]
+        EMAIL["Emails Router<br/>Pending Replies, AI Draft & Send"]
         QUEUE["Async Queue Runner<br/>audio_queue & Background Tasks"]
     end
+
 
     subgraph Storage Layer
         DB[(SQLite / PostgreSQL<br/>SQLAlchemy 2.0 ORM + Startup Auto-Migrations)]
@@ -185,6 +187,14 @@ Project state memory evolves incrementally without re-processing past meeting tr
 - The standalone completed meetings endpoint (`GET /v1/meetings?project_id=standalone&status=completed`) powers the frontend modal filter.
 
 ---
+
+### 6. Mailbox Intelligence & AI Email Replies Subsystem (Phase 1)
+- **Inbox Classification**: `GET /v1/emails/pending-replies` retrieves user inbox emails using short-lived Google access tokens and passes email bodies + thread histories to Zoho GLM (`crm-di-glm47b_30b_it`). Categorizes messages into `NEEDS_REPLY`, `NO_REPLY_NEEDED`, or `UNCLEAR` with AI reasoning explanations.
+- **AI Draft Generation**: `POST /v1/emails/{message_id}/draft-reply` constructs non-hallucinatory contextual drafts matching email threads and optional user instructions.
+- **Review & Send**: `POST /v1/emails/send-reply` sends user-reviewed responses via Gmail API (`users.messages.send`) formatted as RFC 2822 messages with complete thread context headers (`In-Reply-To`, `References`, `threadId`).
+
+---
+
 
 ## 🗄️ Database Schema & ER Diagram
 
