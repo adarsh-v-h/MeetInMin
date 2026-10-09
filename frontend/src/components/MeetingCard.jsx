@@ -157,7 +157,7 @@ const MeetingCard = ({ meeting }) => {
               e.stopPropagation();
               const token = localStorage.getItem('token');
               try {
-                await fetch(`http://localhost:8000/v1/meetings/${meeting.id}/retry`, {
+                await fetch(`/v1/meetings/${meeting.id}/retry`, {
                   method: 'POST',
                   headers: { 'Authorization': `Bearer ${token}` }
                 });
