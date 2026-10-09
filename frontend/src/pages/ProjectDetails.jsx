@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { 
   FolderKanban, ArrowLeft, Brain, CheckSquare, Lightbulb, HelpCircle, 
-  Video, Calendar, Clock, User, ChevronRight, Loader2, RefreshCw, FileText
+  Video, Calendar, Clock, User, ChevronRight, Loader2, RefreshCw, FileText, Plus, X, CheckCircle2
 } from 'lucide-react';
 
 const ProjectDetails = () => {
@@ -11,6 +11,14 @@ const ProjectDetails = () => {
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+
+  // Add Existing Meeting state
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [standaloneMeetings, setStandaloneMeetings] = useState([]);
+  const [loadingStandalone, setLoadingStandalone] = useState(false);
+  const [selectedMeetingId, setSelectedMeetingId] = useState('');
+  const [addingMeeting, setAddingMeeting] = useState(false);
+  const [addError, setAddError] = useState(null);
 
   const fetchProjectDetails = async () => {
     setLoading(true);
@@ -31,6 +39,66 @@ const ProjectDetails = () => {
       console.error('Error fetching project details:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchStandaloneCompletedMeetings = async () => {
+    setLoadingStandalone(true);
+    setAddError(null);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('/v1/meetings?project_id=standalone&status=completed&limit=50', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setStandaloneMeetings(data.items || []);
+        if (data.items && data.items.length > 0) {
+          setSelectedMeetingId(data.items[0].id);
+        } else {
+          setSelectedMeetingId('');
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch standalone completed meetings:', err);
+    } finally {
+      setLoadingStandalone(false);
+    }
+  };
+
+  const handleOpenAddModal = () => {
+    setShowAddModal(true);
+    fetchStandaloneCompletedMeetings();
+  };
+
+  const handleAddMeetingToProject = async (e) => {
+    e.preventDefault();
+    if (!selectedMeetingId) return;
+    setAddingMeeting(true);
+    setAddError(null);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/v1/meetings/${selectedMeetingId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ project_id: projectId })
+      });
+
+      if (response.ok) {
+        setShowAddModal(false);
+        fetchProjectDetails();
+      } else {
+        const err = await response.json();
+        setAddError(err.detail || 'Failed to assign meeting to project.');
+      }
+    } catch (err) {
+      console.error('Error assigning meeting:', err);
+      setAddError('Network error while assigning meeting.');
+    } finally {
+      setAddingMeeting(false);
     }
   };
 
@@ -96,18 +164,33 @@ const ProjectDetails = () => {
               </p>
             )}
           </div>
-          <button
-            onClick={fetchProjectDetails}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '0.4rem',
-              padding: '0.5rem 1rem',
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              borderRadius: '8px', color: '#fff', fontSize: '0.85rem', cursor: 'pointer'
-            }}
-          >
-            <RefreshCw size={14} /> Refresh State
-          </button>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button
+              onClick={handleOpenAddModal}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.4rem',
+                padding: '0.55rem 1.1rem',
+                background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
+                color: '#fff', border: 'none', borderRadius: '8px',
+                fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)'
+              }}
+            >
+              <Plus size={16} /> Add Existing Meeting
+            </button>
+            <button
+              onClick={fetchProjectDetails}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.4rem',
+                padding: '0.55rem 1rem',
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '8px', color: '#fff', fontSize: '0.85rem', cursor: 'pointer'
+              }}
+            >
+              <RefreshCw size={14} /> Refresh State
+            </button>
+          </div>
         </div>
 
         {/* Quick Stats Grid */}
@@ -378,6 +461,103 @@ const ProjectDetails = () => {
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {/* Add Existing Meeting Modal */}
+      {showAddModal && (
+        <div style={{
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, padding: '1rem'
+        }}>
+          <div style={{
+            background: '#141414', border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: '16px', padding: '2rem', width: '100%', maxWidth: '500px',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', gap: '1.5rem'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontSize: '1.35rem', fontWeight: 'bold', margin: 0, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Plus size={20} style={{ color: '#3B82F6' }} /> Add Existing Completed Meeting
+              </h2>
+              <button
+                onClick={() => setShowAddModal(false)}
+                style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: '4px' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {loadingStandalone ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
+                <Loader2 className="animate-spin" size={28} style={{ color: '#3B82F6' }} />
+              </div>
+            ) : standaloneMeetings.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'rgba(255,255,255,0.6)' }}>
+                <CheckCircle2 size={40} style={{ color: 'rgba(255,255,255,0.2)', marginBottom: '0.75rem' }} />
+                <p style={{ margin: 0, fontSize: '0.95rem' }}>No standalone completed meetings available to add.</p>
+                <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.4rem' }}>
+                  Only standalone meetings with 'Completed' status can be added to a project.
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={handleAddMeetingToProject} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)', marginBottom: '0.5rem', fontWeight: '500' }}>
+                    Select Completed Meeting *
+                  </label>
+                  <select
+                    value={selectedMeetingId}
+                    onChange={(e) => setSelectedMeetingId(e.target.value)}
+                    required
+                    style={{
+                      width: '100%', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff',
+                      fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box', cursor: 'pointer'
+                    }}
+                  >
+                    {standaloneMeetings.map((m) => (
+                      <option key={m.id} value={m.id} style={{ background: '#141414', color: '#fff' }}>
+                        {m.title} ({new Date(m.created_at).toLocaleDateString()})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {addError && (
+                  <div style={{ color: '#ef4444', fontSize: '0.85rem', background: 'rgba(239,68,68,0.1)', padding: '0.6rem 0.85rem', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.2)' }}>
+                    {addError}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddModal(false)}
+                    style={{
+                      padding: '0.6rem 1.2rem', borderRadius: '8px', background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.8)', fontWeight: '500', cursor: 'pointer'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={addingMeeting}
+                    style={{
+                      padding: '0.6rem 1.4rem', borderRadius: '8px',
+                      background: 'linear-gradient(135deg, #3B82F6, #2563EB)',
+                      border: 'none', color: '#fff', fontWeight: '600', cursor: addingMeeting ? 'wait' : 'pointer',
+                      opacity: addingMeeting ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: '0.5rem'
+                    }}
+                  >
+                    {addingMeeting ? <Loader2 className="animate-spin" size={16} /> : 'Add to Project & Sync Memory'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
       )}
     </div>

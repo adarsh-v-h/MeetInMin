@@ -370,7 +370,8 @@ async def list_meetings(
     db: DbSession,
     page: int = 1,
     limit: int = 10,
-    project_id: Optional[str] = Query(None)
+    project_id: Optional[str] = Query(None),
+    status: Optional[str] = Query(None)
 ):
     offset = (page - 1) * limit
     
@@ -378,6 +379,9 @@ async def list_meetings(
         joinedload(Meeting.api_key),
         joinedload(Meeting.project)
     ).where(Meeting.user_id == current_user.id)
+
+    if status:
+        query = query.where(Meeting.status == status)
 
     if project_id:
         if project_id.lower() in ["standalone", "none", "null"]:
@@ -388,6 +392,9 @@ async def list_meetings(
             total_stmt = select(func.count(Meeting.id)).where(Meeting.user_id == current_user.id, Meeting.project_id == project_id)
     else:
         total_stmt = select(func.count(Meeting.id)).where(Meeting.user_id == current_user.id)
+
+    if status:
+        total_stmt = total_stmt.where(Meeting.status == status)
 
     query = query.order_by(Meeting.created_at.desc())
     total = db.execute(total_stmt).scalar()
@@ -536,7 +543,8 @@ async def update_meeting(
     meeting_id: str,
     update_data: MeetingUpdate,
     current_user: CurrentUser,
-    db: DbSession
+    db: DbSession,
+    background_tasks: BackgroundTasks
 ):
     meeting = db.execute(
         select(Meeting).options(joinedload(Meeting.project)).where(Meeting.id == meeting_id, Meeting.user_id == current_user.id)
@@ -554,19 +562,37 @@ async def update_meeting(
             )
         meeting.title = clean_title
 
+    project_changed = False
     if update_data.project_id is not None:
         if update_data.project_id == "" or update_data.project_id.lower() in ["null", "none"]:
             meeting.project_id = None
         else:
+            if meeting.status != "completed":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Only completed meetings can be assigned to a project."
+                )
+
             proj = db.execute(
                 select(Project).where(Project.id == update_data.project_id, Project.user_id == current_user.id)
             ).scalar_one_or_none()
             if not proj:
                 raise HTTPException(status_code=404, detail="Project not found")
+
+            if meeting.project_id != update_data.project_id:
+                project_changed = True
+
             meeting.project_id = update_data.project_id
         
     db.commit()
     db.refresh(meeting)
+
+    if project_changed and meeting.project_id:
+        try:
+            from app.services.project.memory_engine import process_project_memory_update
+            background_tasks.add_task(process_project_memory_update, meeting.id, db)
+        except Exception as err:
+            logger.error(f"Failed to trigger memory update for meeting {meeting.id}: {err}")
         
     return {
         "status": "success",
