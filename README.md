@@ -1,6 +1,6 @@
 # 🎙️ MeetInMin
 
-**MeetInMin** is an invisible, AI-powered meeting intelligence assistant. It silently captures audio directly from your browser tab during meetings (Google Meet, Zoom, Teams, or video streams, anything on a web browser we can take it) without requiring any awkward AI bots to join your calls. It transcribes audio using **Zoho Zia Speech-to-Text**, extracts key decisions and action items using **Zoho GLM**, and optionally enriches insights with context from your **Gmail inbox**.
+**MeetInMin** is an invisible, AI-powered meeting intelligence and project memory assistant. It silently captures audio directly from your browser tab during meetings (Google Meet, Zoom, Teams, or video streams) without requiring any awkward AI bots to join your calls. It transcribes audio using **Zoho Zia Speech-to-Text**, extracts key decisions and action items using **Zoho GLM**, enriches insights with context from your **Gmail inbox**, and accumulates long-term **Project State Memory** from meeting transcripts and uploaded project documents (`.pdf`, `.docx`, `.md`, `.txt`).
 
 ---
 
@@ -8,12 +8,15 @@
 
 - **Zero-Bot Ingestion**: Captures high-fidelity tab & microphone audio via a lightweight Chrome extension (`MeetInMinExe`) — no meeting room bots required.
 - **Dual Ingestion Support**: Record live calls via the Chrome extension OR create meetings and upload pre-recorded audio files (`.webm`, `.mp3`, `.wav`, `.m4a`, `.mp4`) directly from the Web Dashboard.
+- **Project Document Uploads & Context Integration**: Upload technical specifications, project documentation, or architecture guides (`.pdf`, `.docx`, `.md`, `.txt` up to 15 MB) directly to projects. An AI Document Memory Engine automatically parses text and incrementally evolves the project's cumulative state memory.
+- **Incremental Project Memory Engine**: Assign standalone completed meetings or upload documents to projects. The system dynamically updates project state memory, active decisions, action items, and open questions using Zoho GLM.
+- **Completed Meetings Enforcement**: Strict status checks ensure only fully processed meetings (`status == 'completed'`) can be assigned to projects.
 - **Zoho AI Intelligence**: Powered by Zoho Catalyst Zia STT (with automatic 4-minute audio chunking) and Zoho GLM (`crm-di-glm47b_30b_it`).
 - **Itemized Confidence Scoring**: Evaluates summary bullet points, key decisions, and action items on a `0.00` to `1.00` confidence scale (High/Medium/Low badges with explanation tooltips).
 - **AI Smart Titles & Custom Renaming**: Automatically generates 3-6 word descriptive meeting titles and supports inline manual title renaming (`PATCH /v1/meetings/{id}`).
 - **Mailbox Intelligence**: Connects to your Gmail via OAuth 2.0 to cross-reference email context, attributing decisions and follow-ups to relevant email threads without storing raw email content.
 - **Local Safety Backup & Auto-Migrations**: Extension offers 1-click local `.webm` file downloads, and the backend performs automatic startup schema migrations.
-- **Full Data Ownership**: Download raw transcripts (`.txt`) and original meeting audio (`.webm`) directly from your dashboard anytime.
+- **Full Data Ownership**: Download raw transcripts (`.txt`), original meeting audio (`.webm`), and uploaded project documents anytime.
 
 ---
 
@@ -130,15 +133,19 @@ npm run dev
    * (Optional) Toggle **Include Microphone** to record both tab audio and your microphone.
    * Click **Start Recording**.
    * When finished, click **Stop Recording**. The audio is uploaded automatically.
-5. **View AI Insights**:
-   * Open your Dashboard (`http://localhost:5173/dashboard`).
-   * Once processing completes, click the meeting card to inspect the **Executive Summary**, **Key Decisions**, **Action Items**, **Gmail Source Attribution**, and download transcripts/audio files.
+5. **Manage Projects & Upload Documents**:
+   * Create a project in the **Projects** tab.
+   * Navigate to **Project Details > Documents** tab.
+   * Click **Upload Document** to upload text specifications (`.pdf`, `.docx`, `.md`, `.txt`).
+   * The AI Document Memory Engine automatically processes the text and updates accumulated project memory state.
+   * Click **Add Existing Meeting** to assign completed standalone meetings into your project memory.
 
 ---
 
 ## 📖 Additional Documentation & Resources
 
 - 🏗️ **Technical Architecture**: See [ARCHITECTURE.md](file:///home/venzz/Work/Projects/MeetInMin/Docs/ARCHITECTURE.md) for full developer diagrams, data pipelines, STT chunking mechanics, and DB schemas.
+- 🔌 **API Integration Guide**: See [api-integration-guide.md](file:///home/venzz/Work/Projects/MeetInMin/Docs/api-integration-guide.md) for Zoho Zia STT & GLM integration specifications.
 
 ---
 

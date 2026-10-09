@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { 
   FolderKanban, ArrowLeft, Brain, CheckSquare, Lightbulb, HelpCircle, 
-  Video, Calendar, Clock, User, ChevronRight, Loader2, RefreshCw, FileText, Plus, X, CheckCircle2
+  Video, Calendar, Clock, User, ChevronRight, Loader2, RefreshCw, FileText, Plus, X, CheckCircle2,
+  UploadCloud, Download, Trash2, AlertTriangle, FileCheck, FileX
 } from 'lucide-react';
 
 const ProjectDetails = () => {
@@ -20,8 +21,14 @@ const ProjectDetails = () => {
   const [addingMeeting, setAddingMeeting] = useState(false);
   const [addError, setAddError] = useState(null);
 
-  const fetchProjectDetails = async () => {
-    setLoading(true);
+  // Upload Document state
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+
+  const fetchProjectDetails = async (isBackground = false) => {
+    if (!isBackground) setLoading(true);
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(`/v1/projects/${projectId}`, {
@@ -32,13 +39,13 @@ const ProjectDetails = () => {
       if (response.ok) {
         const data = await response.json();
         setProject(data);
-      } else {
+      } else if (!isBackground) {
         navigate('/projects');
       }
     } catch (error) {
       console.error('Error fetching project details:', error);
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   };
 
@@ -102,9 +109,117 @@ const ProjectDetails = () => {
     }
   };
 
+  // Document Upload Handlers
+  const handleOpenUploadModal = () => {
+    setSelectedFile(null);
+    setUploadError(null);
+    setShowUploadModal(true);
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const allowedExtensions = ['.pdf', '.docx', '.md', '.txt'];
+    const fileExt = '.' + file.name.split('.').pop().toLowerCase();
+    
+    if (!allowedExtensions.includes(fileExt)) {
+      setUploadError(`Invalid file type "${fileExt}". Only PDF, DOCX, MD, and TXT files are supported.`);
+      setSelectedFile(null);
+      return;
+    }
+
+    if (file.size > 15 * 1024 * 1024) {
+      setUploadError('File size exceeds the maximum limit of 15 MB.');
+      setSelectedFile(null);
+      return;
+    }
+
+    setUploadError(null);
+    setSelectedFile(file);
+  };
+
+  const handleUploadDocumentSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedFile) return;
+
+    setUploadingDoc(true);
+    setUploadError(null);
+
+    try {
+      const token = localStorage.getItem('token');
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+
+      const response = await fetch(`/v1/projects/${projectId}/documents`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      if (response.ok) {
+        setShowUploadModal(false);
+        setSelectedFile(null);
+        fetchProjectDetails();
+      } else {
+        const err = await response.json();
+        setUploadError(err.detail || 'Failed to upload document.');
+      }
+    } catch (err) {
+      console.error('Error uploading document:', err);
+      setUploadError('Network error while uploading document.');
+    } finally {
+      setUploadingDoc(false);
+    }
+  };
+
+  const handleDownloadDocument = async (docId, originalFilename) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/v1/projects/${projectId}/documents/${docId}/download`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (!response.ok) {
+        alert('Failed to download file.');
+        return;
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = originalFilename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err) {
+      console.error('Download error:', err);
+      alert('Error downloading file.');
+    }
+  };
+
   useEffect(() => {
     fetchProjectDetails();
   }, [projectId]);
+
+  // Auto-poll if any document is processing or uploaded
+  useEffect(() => {
+    if (!project || !project.documents) return;
+    const isProcessing = project.documents.some(
+      (doc) => doc.status === 'uploaded' || doc.status === 'processing'
+    );
+
+    if (isProcessing) {
+      const timer = setTimeout(() => {
+        fetchProjectDetails(true);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [project]);
 
   if (loading) {
     return (
@@ -121,6 +236,15 @@ const ProjectDetails = () => {
   const actions = project.actions || [];
   const questions = project.questions || [];
   const meetings = project.meetings || [];
+  const documents = project.documents || [];
+
+  const formatFileSize = (bytes) => {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', color: '#fff' }}>
@@ -138,93 +262,138 @@ const ProjectDetails = () => {
 
       {/* Project Header Banner */}
       <div style={{
-        background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.05) 100%)',
+        background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.04) 100%)',
         border: '1px solid rgba(59, 130, 246, 0.2)',
-        borderRadius: '20px',
-        padding: '2rem',
+        borderRadius: '24px',
+        padding: '2.25rem',
         marginBottom: '2rem',
         position: 'relative',
-        backdropFilter: 'blur(10px)'
+        backdropFilter: 'blur(16px)',
+        boxShadow: '0 12px 32px -8px rgba(0, 0, 0, 0.3)'
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.6rem' }}>
               <span style={{
-                background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA',
-                padding: '0.25rem 0.75rem', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '600',
-                textTransform: 'uppercase', letterSpacing: '0.5px'
+                background: 'rgba(59, 130, 246, 0.18)', color: '#60A5FA',
+                padding: '0.3rem 0.85rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '600',
+                textTransform: 'uppercase', letterSpacing: '0.6px', border: '1px solid rgba(59, 130, 246, 0.25)'
               }}>
                 PROJECT
               </span>
-              <h1 style={{ fontSize: '2rem', fontWeight: '700' }}>{project.name}</h1>
+              <h1 style={{ fontSize: '2.1rem', fontWeight: '700', letterSpacing: '-0.02em', margin: 0 }}>{project.name}</h1>
             </div>
             {project.description && (
-              <p style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '1rem', maxWidth: '800px', lineHeight: '1.5' }}>
+              <p style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '1rem', maxWidth: '800px', lineHeight: '1.6', margin: 0 }}>
                 {project.description}
               </p>
             )}
           </div>
           <div style={{ display: 'flex', gap: '0.75rem' }}>
             <button
-              onClick={handleOpenAddModal}
+              onClick={handleOpenUploadModal}
               style={{
-                display: 'flex', alignItems: 'center', gap: '0.4rem',
-                padding: '0.55rem 1.1rem',
-                background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
-                color: '#fff', border: 'none', borderRadius: '8px',
-                fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer',
-                boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)'
+                display: 'flex', alignItems: 'center', gap: '0.45rem',
+                padding: '0.6rem 1.25rem',
+                background: 'rgba(255, 255, 255, 0.07)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                color: '#fff', borderRadius: '12px',
+                fontSize: '0.88rem', fontWeight: '600', cursor: 'pointer',
+                transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                backdropFilter: 'blur(8px)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
+                e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.4)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.07)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
               }}
             >
-              <Plus size={16} /> Add Existing Meeting
+              <UploadCloud size={17} style={{ color: '#60A5FA' }} /> Upload Document
             </button>
             <button
-              onClick={fetchProjectDetails}
+              onClick={handleOpenAddModal}
               style={{
-                display: 'flex', alignItems: 'center', gap: '0.4rem',
-                padding: '0.55rem 1rem',
-                background: 'rgba(255, 255, 255, 0.05)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                borderRadius: '8px', color: '#fff', fontSize: '0.85rem', cursor: 'pointer'
+                display: 'flex', alignItems: 'center', gap: '0.45rem',
+                padding: '0.6rem 1.25rem',
+                background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
+                color: '#fff', border: 'none', borderRadius: '12px',
+                fontSize: '0.88rem', fontWeight: '600', cursor: 'pointer',
+                boxShadow: '0 4px 16px rgba(59, 130, 246, 0.35)',
+                transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = '0 6px 20px rgba(59, 130, 246, 0.45)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'none';
+                e.currentTarget.style.boxShadow = '0 4px 16px rgba(59, 130, 246, 0.35)';
               }}
             >
-              <RefreshCw size={14} /> Refresh State
+              <Plus size={17} /> Add Existing Meeting
+            </button>
+            <button
+              onClick={() => fetchProjectDetails()}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.45rem',
+                padding: '0.6rem 1.1rem',
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '12px', color: 'rgba(255, 255, 255, 0.85)', fontSize: '0.85rem', cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.09)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+              }}
+            >
+              <RefreshCw size={14} /> Refresh
             </button>
           </div>
         </div>
 
         {/* Quick Stats Grid */}
         <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem',
-          marginTop: '1.5rem', paddingTop: '1.5rem',
+          display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1.25rem',
+          marginTop: '1.75rem', paddingTop: '1.5rem',
           borderTop: '1px solid rgba(255, 255, 255, 0.08)'
         }}>
-          <div>
-            <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>Total Meetings</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#60A5FA' }}>{meetings.length}</div>
+          <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '0.85rem 1.1rem', borderRadius: '14px', border: '1px solid rgba(255, 255, 255, 0.04)' }}>
+            <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Meetings</div>
+            <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#60A5FA', marginTop: '0.2rem' }}>{meetings.length}</div>
           </div>
-          <div>
-            <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>Active Decisions</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#F59E0B' }}>{decisions.length}</div>
+          <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '0.85rem 1.1rem', borderRadius: '14px', border: '1px solid rgba(255, 255, 255, 0.04)' }}>
+            <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Documents</div>
+            <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#A7F3D0', marginTop: '0.2rem' }}>{documents.length}</div>
           </div>
-          <div>
-            <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>Action Items</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#10B981' }}>{actions.length}</div>
+          <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '0.85rem 1.1rem', borderRadius: '14px', border: '1px solid rgba(255, 255, 255, 0.04)' }}>
+            <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Active Decisions</div>
+            <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#F59E0B', marginTop: '0.2rem' }}>{decisions.length}</div>
           </div>
-          <div>
-            <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>Open Questions</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#EC4899' }}>{questions.length}</div>
+          <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '0.85rem 1.1rem', borderRadius: '14px', border: '1px solid rgba(255, 255, 255, 0.04)' }}>
+            <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Action Items</div>
+            <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#10B981', marginTop: '0.2rem' }}>{actions.length}</div>
+          </div>
+          <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '0.85rem 1.1rem', borderRadius: '14px', border: '1px solid rgba(255, 255, 255, 0.04)' }}>
+            <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Open Questions</div>
+            <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#EC4899', marginTop: '0.2rem' }}>{questions.length}</div>
           </div>
         </div>
       </div>
 
       {/* Navigation Tabs */}
       <div style={{
-        display: 'flex', gap: '0.5rem', borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-        marginBottom: '2rem'
+        display: 'flex', gap: '0.4rem', borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+        marginBottom: '2rem', paddingBottom: '0.4rem'
       }}>
         {[
           { id: 'overview', label: 'Project State Memory', icon: <Brain size={18} /> },
+          { id: 'documents', label: `Documents (${documents.length})`, icon: <FileText size={18} /> },
           { id: 'decisions', label: `Decisions (${decisions.length})`, icon: <Lightbulb size={18} /> },
           { id: 'actions', label: `Action Items (${actions.length})`, icon: <CheckSquare size={18} /> },
           { id: 'questions', label: `Questions (${questions.length})`, icon: <HelpCircle size={18} /> },
@@ -235,14 +404,14 @@ const ProjectDetails = () => {
             onClick={() => setActiveTab(tab.id)}
             style={{
               display: 'flex', alignItems: 'center', gap: '0.5rem',
-              padding: '0.75rem 1.25rem',
-              background: 'transparent',
-              border: 'none',
-              borderBottom: activeTab === tab.id ? '2px solid #3B82F6' : '2px solid transparent',
-              color: activeTab === tab.id ? '#3B82F6' : 'rgba(255, 255, 255, 0.6)',
+              padding: '0.65rem 1.25rem',
+              background: activeTab === tab.id ? 'rgba(59, 130, 246, 0.12)' : 'transparent',
+              border: activeTab === tab.id ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid transparent',
+              borderRadius: '12px',
+              color: activeTab === tab.id ? '#60A5FA' : 'rgba(255, 255, 255, 0.65)',
               fontWeight: activeTab === tab.id ? '600' : '500',
-              fontSize: '0.95rem', cursor: 'pointer',
-              transition: 'all 0.2s'
+              fontSize: '0.92rem', cursor: 'pointer',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
             }}
           >
             {tab.icon}
@@ -255,16 +424,19 @@ const ProjectDetails = () => {
       {activeTab === 'overview' && (
         <div>
           <div style={{
-            background: 'rgba(255, 255, 255, 0.03)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            borderRadius: '16px', padding: '2rem',
-            marginBottom: '2rem', backdropFilter: 'blur(10px)'
+            background: 'rgba(255, 255, 255, 0.025)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: '20px', padding: '2.25rem',
+            marginBottom: '2rem', backdropFilter: 'blur(16px)',
+            boxShadow: '0 8px 30px rgba(0, 0, 0, 0.2)'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem' }}>
-              <Brain size={22} style={{ color: '#3B82F6' }} />
-              <h2 style={{ fontSize: '1.25rem', fontWeight: '600' }}>Accumulated Project State</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
+              <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(59, 130, 246, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#60A5FA' }}>
+                <Brain size={22} />
+              </div>
+              <h2 style={{ fontSize: '1.3rem', fontWeight: '600', margin: 0 }}>Accumulated Project State</h2>
               {memory.updated_at && (
-                <span style={{ marginLeft: 'auto', fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)' }}>
+                <span style={{ marginLeft: 'auto', fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.04)', padding: '0.25rem 0.75rem', borderRadius: '20px' }}>
                   Updated {new Date(memory.updated_at).toLocaleDateString()}
                 </span>
               )}
@@ -272,25 +444,244 @@ const ProjectDetails = () => {
 
             {memory.current_state ? (
               <div style={{
-                color: 'rgba(255, 255, 255, 0.85)',
-                fontSize: '1rem', lineHeight: '1.7', whiteSpace: 'pre-wrap'
+                color: 'rgba(255, 255, 255, 0.88)',
+                fontSize: '1rem', lineHeight: '1.75', whiteSpace: 'pre-wrap',
+                background: 'rgba(0, 0, 0, 0.2)', padding: '1.5rem', borderRadius: '14px', border: '1px solid rgba(255, 255, 255, 0.04)'
               }}>
                 {memory.current_state}
               </div>
             ) : (
-              <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontStyle: 'italic' }}>
-                No project memory accumulated yet. Complete meetings in this project to automatically build state!
+              <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontStyle: 'italic', margin: 0 }}>
+                No project memory accumulated yet. Complete meetings or upload documents in this project to automatically build state!
               </p>
             )}
           </div>
         </div>
       )}
 
-      {/* Tab Content 2: Decisions */}
+      {/* Tab Content 2: Documents */}
+      {activeTab === 'documents' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          {/* Beta Notice Banner */}
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(217, 119, 6, 0.04) 100%)',
+            border: '1px solid rgba(245, 158, 11, 0.22)',
+            borderRadius: '16px',
+            padding: '1.1rem 1.4rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem',
+            backdropFilter: 'blur(10px)',
+            boxShadow: '0 4px 20px rgba(245, 158, 11, 0.08)'
+          }}>
+            <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(245, 158, 11, 0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <AlertTriangle size={20} style={{ color: '#FBBF24' }} />
+            </div>
+            <div style={{ fontSize: '0.88rem', color: 'rgba(255, 255, 255, 0.88)', lineHeight: '1.5' }}>
+              <strong style={{ color: '#FBBF24', fontWeight: '600' }}>Beta Notice:</strong> We are currently in Beta state and only able to analyze text content. Images embedded in uploaded files will be ignored, and image-only scanned files (e.g. image PDFs without text layer) will fail analysis. Supported formats: <strong>.pdf, .docx, .md, .txt</strong> (Max 15 MB).
+            </div>
+          </div>
+
+          {/* Documents Header Bar */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ fontSize: '1.15rem', fontWeight: '600', color: '#fff', margin: 0 }}>
+              Uploaded Project Documents ({documents.length})
+            </h3>
+            <button
+              onClick={handleOpenUploadModal}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.45rem',
+                padding: '0.6rem 1.25rem',
+                background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
+                color: '#fff', border: 'none', borderRadius: '12px',
+                fontSize: '0.88rem', fontWeight: '600', cursor: 'pointer',
+                boxShadow: '0 4px 16px rgba(59, 130, 246, 0.35)',
+                transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = '0 6px 20px rgba(59, 130, 246, 0.45)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'none';
+                e.currentTarget.style.boxShadow = '0 4px 16px rgba(59, 130, 246, 0.35)';
+              }}
+            >
+              <UploadCloud size={17} /> Upload Document
+            </button>
+          </div>
+
+          {/* Row-wise Document View */}
+          {documents.length === 0 ? (
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.02)',
+              border: '1px dashed rgba(255, 255, 255, 0.12)',
+              borderRadius: '18px', padding: '3.5rem 2rem', textAlign: 'center',
+              backdropFilter: 'blur(8px)'
+            }}>
+              <div style={{ width: '56px', height: '56px', borderRadius: '16px', background: 'rgba(255, 255, 255, 0.04)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+                <FileText size={28} style={{ color: 'rgba(255, 255, 255, 0.3)' }} />
+              </div>
+              <p style={{ color: 'rgba(255, 255, 255, 0.7)', margin: 0, fontSize: '1rem', fontWeight: '500' }}>
+                No documents uploaded for this project yet.
+              </p>
+              <p style={{ color: 'rgba(255, 255, 255, 0.45)', fontSize: '0.85rem', marginTop: '0.4rem' }}>
+                Upload text documents, specifications, or architectural notes to build project context.
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              {documents.map((doc) => (
+                <div
+                  key={doc.id}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.025)',
+                    border: '1px solid rgba(255, 255, 255, 0.07)',
+                    borderRadius: '16px',
+                    padding: '1.1rem 1.4rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                    backdropFilter: 'blur(10px)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.35)';
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.045)';
+                    e.currentTarget.style.boxShadow = '0 8px 24px -6px rgba(0, 0, 0, 0.3)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.07)';
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.025)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                >
+                  {/* Left: Document Icon & Name & Date */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1.1rem', minWidth: 0, flex: 1 }}>
+                    <div style={{
+                      width: '44px', height: '44px', borderRadius: '12px',
+                      background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.1) 100%)',
+                      border: '1px solid rgba(59, 130, 246, 0.25)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: '#60A5FA', flexShrink: 0
+                    }}>
+                      <FileText size={22} />
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{
+                        fontSize: '1rem', fontWeight: '600', color: '#fff',
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        letterSpacing: '-0.01em'
+                      }}>
+                        {doc.filename}
+                      </div>
+                      <div style={{ fontSize: '0.82rem', color: 'rgba(255, 255, 255, 0.5)', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                        <span>Uploaded {new Date(doc.uploaded_at || doc.created_at).toLocaleDateString()} at {new Date(doc.uploaded_at || doc.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span>•</span>
+                        <span>{formatFileSize(doc.file_size)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Middle / Right: Status Badge & Actions */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexShrink: 0 }}>
+                    {/* Status Badge */}
+                    {doc.processing_status === 'ready' && (
+                      <span style={{
+                        display: 'flex', alignItems: 'center', gap: '0.4rem',
+                        background: 'rgba(16, 185, 129, 0.12)', color: '#34D399',
+                        border: '1px solid rgba(16, 185, 129, 0.25)',
+                        padding: '0.35rem 0.85rem', borderRadius: '20px', fontSize: '0.78rem', fontWeight: '600'
+                      }}>
+                        <FileCheck size={14} /> Ready
+                      </span>
+                    )}
+                    {(doc.processing_status === 'uploaded' || doc.processing_status === 'processing') && (
+                      <span style={{
+                        display: 'flex', alignItems: 'center', gap: '0.4rem',
+                        background: 'rgba(59, 130, 246, 0.12)', color: '#60A5FA',
+                        border: '1px solid rgba(59, 130, 246, 0.25)',
+                        padding: '0.35rem 0.85rem', borderRadius: '20px', fontSize: '0.78rem', fontWeight: '600'
+                      }}>
+                        <Loader2 className="animate-spin" size={14} /> Processing AI...
+                      </span>
+                    )}
+                    {doc.processing_status === 'failed' && (
+                      <span
+                        title={doc.error_message || 'Document processing failed'}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '0.4rem',
+                          background: 'rgba(239, 68, 68, 0.12)', color: '#F87171',
+                          border: '1px solid rgba(239, 68, 68, 0.25)',
+                          padding: '0.35rem 0.85rem', borderRadius: '20px', fontSize: '0.78rem', fontWeight: '600',
+                          cursor: 'help'
+                        }}
+                      >
+                        <FileX size={14} /> Failed
+                      </span>
+                    )}
+
+                    {/* Action Icon Buttons */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                      {/* Download Button */}
+                      <button
+                        onClick={() => handleDownloadDocument(doc.id, doc.filename)}
+                        title="Download Original Document"
+                        style={{
+                          background: 'rgba(59, 130, 246, 0.1)',
+                          border: '1px solid rgba(59, 130, 246, 0.25)',
+                          color: '#60A5FA',
+                          borderRadius: '10px',
+                          padding: '0.5rem 0.65rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(59, 130, 246, 0.2)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'rgba(59, 130, 246, 0.1)';
+                        }}
+                      >
+                        <Download size={16} />
+                      </button>
+
+                      {/* Disabled Delete Button */}
+                      <button
+                        disabled
+                        title="Document deletion is disabled in Beta mode"
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.03)',
+                          border: '1px solid rgba(255, 255, 255, 0.08)',
+                          color: 'rgba(255, 255, 255, 0.3)',
+                          borderRadius: '10px',
+                          padding: '0.5rem 0.65rem',
+                          cursor: 'not-allowed',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          opacity: 0.4
+                        }}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab Content 3: Decisions */}
       {activeTab === 'decisions' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {decisions.length === 0 ? (
-            <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontStyle: 'italic', padding: '2rem', textAlign: 'center' }}>
+            <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontStyle: 'italic', padding: '2.5rem', textAlign: 'center' }}>
               No decisions recorded for this project yet.
             </p>
           ) : (
@@ -298,20 +689,20 @@ const ProjectDetails = () => {
               <div
                 key={d.id}
                 style={{
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                  borderRadius: '12px', padding: '1.25rem',
+                  background: 'rgba(255, 255, 255, 0.025)',
+                  border: '1px solid rgba(255, 255, 255, 0.07)',
+                  borderRadius: '16px', padding: '1.25rem 1.5rem',
                   display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start'
                 }}
               >
-                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', gap: '0.85rem', alignItems: 'flex-start' }}>
                   <Lightbulb size={20} style={{ color: '#F59E0B', flexShrink: 0, marginTop: '2px' }} />
                   <div>
                     <div style={{ fontSize: '1rem', fontWeight: '500', color: '#fff', marginBottom: '0.3rem' }}>
                       {d.decision_text}
                     </div>
                     {d.confidence_reason && (
-                      <div style={{ fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.5)' }}>
+                      <div style={{ fontSize: '0.82rem', color: 'rgba(255, 255, 255, 0.5)' }}>
                         {d.confidence_reason}
                       </div>
                     )}
@@ -322,7 +713,7 @@ const ProjectDetails = () => {
                   {d.confidence_score && (
                     <span style={{
                       background: 'rgba(245, 158, 11, 0.15)', color: '#FBBF24',
-                      padding: '0.2rem 0.6rem', borderRadius: '12px', fontSize: '0.75rem', fontWeight: '600'
+                      padding: '0.25rem 0.75rem', borderRadius: '20px', fontSize: '0.78rem', fontWeight: '600'
                     }}>
                       {Math.round(d.confidence_score * 100)}% Confidence
                     </span>
@@ -334,11 +725,11 @@ const ProjectDetails = () => {
         </div>
       )}
 
-      {/* Tab Content 3: Action Items */}
+      {/* Tab Content 4: Action Items */}
       {activeTab === 'actions' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {actions.length === 0 ? (
-            <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontStyle: 'italic', padding: '2rem', textAlign: 'center' }}>
+            <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontStyle: 'italic', padding: '2.5rem', textAlign: 'center' }}>
               No action items assigned for this project yet.
             </p>
           ) : (
@@ -346,18 +737,18 @@ const ProjectDetails = () => {
               <div
                 key={a.id}
                 style={{
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                  borderRadius: '12px', padding: '1.25rem',
+                  background: 'rgba(255, 255, 255, 0.025)',
+                  border: '1px solid rgba(255, 255, 255, 0.07)',
+                  borderRadius: '16px', padding: '1.25rem 1.5rem',
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                 }}
               >
-                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '0.85rem', alignItems: 'center' }}>
                   <CheckSquare size={20} style={{ color: '#10B981', flexShrink: 0 }} />
                   <div>
                     <div style={{ fontSize: '1rem', fontWeight: '500', color: '#fff' }}>{a.task}</div>
                     {a.assignee && (
-                      <div style={{ fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.5)', marginTop: '2px' }}>
+                      <div style={{ fontSize: '0.82rem', color: 'rgba(255, 255, 255, 0.5)', marginTop: '2px' }}>
                         Assignee: <strong>{a.assignee}</strong>
                       </div>
                     )}
@@ -365,9 +756,9 @@ const ProjectDetails = () => {
                 </div>
 
                 <span style={{
-                  background: a.status === 'completed' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(59, 130, 246, 0.2)',
+                  background: a.status === 'completed' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.15)',
                   color: a.status === 'completed' ? '#34D399' : '#60A5FA',
-                  padding: '0.25rem 0.75rem', borderRadius: '12px', fontSize: '0.75rem', fontWeight: '600'
+                  padding: '0.25rem 0.75rem', borderRadius: '20px', fontSize: '0.78rem', fontWeight: '600'
                 }}>
                   {a.status.toUpperCase()}
                 </span>
@@ -377,11 +768,11 @@ const ProjectDetails = () => {
         </div>
       )}
 
-      {/* Tab Content 4: Questions */}
+      {/* Tab Content 5: Questions */}
       {activeTab === 'questions' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {questions.length === 0 ? (
-            <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontStyle: 'italic', padding: '2rem', textAlign: 'center' }}>
+            <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontStyle: 'italic', padding: '2.5rem', textAlign: 'center' }}>
               No open questions or unresolved risks identified for this project yet.
             </p>
           ) : (
@@ -389,20 +780,20 @@ const ProjectDetails = () => {
               <div
                 key={q.id}
                 style={{
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                  borderRadius: '12px', padding: '1.25rem',
+                  background: 'rgba(255, 255, 255, 0.025)',
+                  border: '1px solid rgba(255, 255, 255, 0.07)',
+                  borderRadius: '16px', padding: '1.25rem 1.5rem',
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                 }}
               >
-                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '0.85rem', alignItems: 'center' }}>
                   <HelpCircle size={20} style={{ color: '#EC4899', flexShrink: 0 }} />
                   <div style={{ fontSize: '1rem', fontWeight: '500', color: '#fff' }}>{q.question}</div>
                 </div>
 
                 <span style={{
-                  background: 'rgba(236, 72, 153, 0.2)', color: '#F472B6',
-                  padding: '0.25rem 0.75rem', borderRadius: '12px', fontSize: '0.75rem', fontWeight: '600'
+                  background: 'rgba(236, 72, 153, 0.15)', color: '#F472B6',
+                  padding: '0.25rem 0.75rem', borderRadius: '20px', fontSize: '0.78rem', fontWeight: '600'
                 }}>
                   {q.status.toUpperCase()}
                 </span>
@@ -412,11 +803,11 @@ const ProjectDetails = () => {
         </div>
       )}
 
-      {/* Tab Content 5: Meetings */}
+      {/* Tab Content 6: Meetings */}
       {activeTab === 'meetings' && (
         <div style={{ display: 'grid', gap: '1rem' }}>
           {meetings.length === 0 ? (
-            <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontStyle: 'italic', padding: '2rem', textAlign: 'center' }}>
+            <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontStyle: 'italic', padding: '2.5rem', textAlign: 'center' }}>
               No meetings assigned to this project yet.
             </p>
           ) : (
@@ -425,24 +816,24 @@ const ProjectDetails = () => {
                 key={m.id}
                 onClick={() => navigate(`/meetings/${m.id}`)}
                 style={{
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                  borderRadius: '12px', padding: '1.25rem',
+                  background: 'rgba(255, 255, 255, 0.025)',
+                  border: '1px solid rgba(255, 255, 255, 0.07)',
+                  borderRadius: '16px', padding: '1.25rem 1.5rem',
                   cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  transition: 'all 0.2s'
+                  transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.3)';
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                  e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.35)';
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.045)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.07)';
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.025)';
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                   <div style={{
-                    width: '40px', height: '40px', borderRadius: '10px',
+                    width: '42px', height: '42px', borderRadius: '12px',
                     background: 'rgba(59, 130, 246, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
                     color: '#60A5FA'
                   }}>
@@ -450,7 +841,7 @@ const ProjectDetails = () => {
                   </div>
                   <div>
                     <h4 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.2rem' }}>{m.title}</h4>
-                    <div style={{ fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.5)', display: 'flex', gap: '1rem' }}>
+                    <div style={{ fontSize: '0.82rem', color: 'rgba(255, 255, 255, 0.5)', display: 'flex', gap: '1rem' }}>
                       <span>{new Date(m.created_at).toLocaleDateString()}</span>
                       <span style={{ textTransform: 'capitalize' }}>Status: {m.status}</span>
                     </div>
@@ -464,26 +855,134 @@ const ProjectDetails = () => {
         </div>
       )}
 
-      {/* Add Existing Meeting Modal */}
-      {showAddModal && (
+      {/* Upload Document Modal */}
+      {showUploadModal && (
         <div style={{
           position: 'fixed', inset: 0,
-          background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
+          background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(12px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           zIndex: 1000, padding: '1rem'
         }}>
           <div style={{
-            background: '#141414', border: '1px solid rgba(255,255,255,0.15)',
-            borderRadius: '16px', padding: '2rem', width: '100%', maxWidth: '500px',
-            boxShadow: '0 20px 50px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', gap: '1.5rem'
+            background: 'rgba(18, 18, 22, 0.95)', border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: '24px', padding: '2.25rem', width: '100%', maxWidth: '520px',
+            boxShadow: '0 24px 60px -12px rgba(0,0,0,0.7)', display: 'flex', flexDirection: 'column', gap: '1.5rem',
+            backdropFilter: 'blur(20px)'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 'bold', margin: 0, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Plus size={20} style={{ color: '#3B82F6' }} /> Add Existing Completed Meeting
+              <h2 style={{ fontSize: '1.35rem', fontWeight: '700', margin: 0, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <UploadCloud size={22} style={{ color: '#3B82F6' }} /> Upload Project Document
+              </h2>
+              <button
+                onClick={() => setShowUploadModal(false)}
+                style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', padding: '6px', borderRadius: '10px' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleUploadDocumentSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div style={{
+                border: '2px dashed rgba(59, 130, 246, 0.3)',
+                borderRadius: '18px',
+                padding: '2.25rem 1.5rem',
+                textAlign: 'center',
+                background: 'rgba(59, 130, 246, 0.03)',
+                cursor: 'pointer',
+                transition: 'all 0.25s'
+              }}>
+                <input
+                  type="file"
+                  id="project-doc-file"
+                  accept=".pdf,.docx,.md,.txt"
+                  onChange={handleFileChange}
+                  style={{ display: 'none' }}
+                />
+                <label htmlFor="project-doc-file" style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.85rem' }}>
+                  <div style={{ width: '54px', height: '54px', borderRadius: '16px', background: 'rgba(59, 130, 246, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#60A5FA' }}>
+                    <UploadCloud size={28} />
+                  </div>
+                  <div>
+                    <span style={{ color: '#60A5FA', fontWeight: '600' }}>Click to select a document</span> or drag & drop
+                  </div>
+                  <span style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.45)' }}>
+                    Supported formats: PDF, DOCX, MD, TXT (Max 15 MB)
+                  </span>
+                </label>
+              </div>
+
+              {selectedFile && (
+                <div style={{
+                  background: 'rgba(59, 130, 246, 0.1)',
+                  border: '1px solid rgba(59, 130, 246, 0.25)',
+                  borderRadius: '12px', padding: '0.85rem 1.1rem',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                    <FileText size={20} style={{ color: '#60A5FA' }} />
+                    <span style={{ fontSize: '0.92rem', fontWeight: '500', color: '#fff' }}>{selectedFile.name}</span>
+                  </div>
+                  <span style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.5)' }}>{formatFileSize(selectedFile.size)}</span>
+                </div>
+              )}
+
+              {uploadError && (
+                <div style={{ color: '#ef4444', fontSize: '0.85rem', background: 'rgba(239,68,68,0.1)', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid rgba(239,68,68,0.2)' }}>
+                  {uploadError}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowUploadModal(false)}
+                  style={{
+                    padding: '0.65rem 1.25rem', borderRadius: '12px', background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.8)', fontWeight: '500', cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!selectedFile || uploadingDoc}
+                  style={{
+                    padding: '0.65rem 1.5rem', borderRadius: '12px',
+                    background: 'linear-gradient(135deg, #3B82F6, #2563EB)',
+                    border: 'none', color: '#fff', fontWeight: '600', cursor: (!selectedFile || uploadingDoc) ? 'not-allowed' : 'pointer',
+                    opacity: (!selectedFile || uploadingDoc) ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '0.5rem',
+                    boxShadow: '0 4px 14px rgba(59, 130, 246, 0.35)'
+                  }}
+                >
+                  {uploadingDoc ? <Loader2 className="animate-spin" size={16} /> : 'Upload & Refine Memory'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Existing Meeting Modal */}
+      {showAddModal && (
+        <div style={{
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(12px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, padding: '1rem'
+        }}>
+          <div style={{
+            background: 'rgba(18, 18, 22, 0.95)', border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: '24px', padding: '2.25rem', width: '100%', maxWidth: '520px',
+            boxShadow: '0 24px 60px -12px rgba(0,0,0,0.7)', display: 'flex', flexDirection: 'column', gap: '1.5rem',
+            backdropFilter: 'blur(20px)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontSize: '1.35rem', fontWeight: '700', margin: 0, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <Plus size={22} style={{ color: '#3B82F6' }} /> Add Existing Completed Meeting
               </h2>
               <button
                 onClick={() => setShowAddModal(false)}
-                style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: '4px' }}
+                style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', padding: '6px', borderRadius: '10px' }}
               >
                 <X size={20} />
               </button>
@@ -494,10 +993,10 @@ const ProjectDetails = () => {
                 <Loader2 className="animate-spin" size={28} style={{ color: '#3B82F6' }} />
               </div>
             ) : standaloneMeetings.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'rgba(255,255,255,0.6)' }}>
-                <CheckCircle2 size={40} style={{ color: 'rgba(255,255,255,0.2)', marginBottom: '0.75rem' }} />
-                <p style={{ margin: 0, fontSize: '0.95rem' }}>No standalone completed meetings available to add.</p>
-                <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.4rem' }}>
+              <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'rgba(255,255,255,0.6)' }}>
+                <CheckCircle2 size={44} style={{ color: 'rgba(255,255,255,0.2)', marginBottom: '0.85rem' }} />
+                <p style={{ margin: 0, fontSize: '0.98rem', fontWeight: '500' }}>No standalone completed meetings available to add.</p>
+                <p style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.45)', marginTop: '0.4rem' }}>
                   Only standalone meetings with 'Completed' status can be added to a project.
                 </p>
               </div>
@@ -512,8 +1011,8 @@ const ProjectDetails = () => {
                     onChange={(e) => setSelectedMeetingId(e.target.value)}
                     required
                     style={{
-                      width: '100%', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.06)',
-                      border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff',
+                      width: '100%', padding: '0.85rem 1.1rem', background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid rgba(255,255,255,0.15)', borderRadius: '12px', color: '#fff',
                       fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box', cursor: 'pointer'
                     }}
                   >
@@ -526,7 +1025,7 @@ const ProjectDetails = () => {
                 </div>
 
                 {addError && (
-                  <div style={{ color: '#ef4444', fontSize: '0.85rem', background: 'rgba(239,68,68,0.1)', padding: '0.6rem 0.85rem', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.2)' }}>
+                  <div style={{ color: '#ef4444', fontSize: '0.85rem', background: 'rgba(239,68,68,0.1)', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid rgba(239,68,68,0.2)' }}>
                     {addError}
                   </div>
                 )}
@@ -536,8 +1035,8 @@ const ProjectDetails = () => {
                     type="button"
                     onClick={() => setShowAddModal(false)}
                     style={{
-                      padding: '0.6rem 1.2rem', borderRadius: '8px', background: 'rgba(255,255,255,0.06)',
-                      border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.8)', fontWeight: '500', cursor: 'pointer'
+                      padding: '0.65rem 1.25rem', borderRadius: '12px', background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.8)', fontWeight: '500', cursor: 'pointer'
                     }}
                   >
                     Cancel
@@ -546,10 +1045,11 @@ const ProjectDetails = () => {
                     type="submit"
                     disabled={addingMeeting}
                     style={{
-                      padding: '0.6rem 1.4rem', borderRadius: '8px',
+                      padding: '0.65rem 1.5rem', borderRadius: '12px',
                       background: 'linear-gradient(135deg, #3B82F6, #2563EB)',
                       border: 'none', color: '#fff', fontWeight: '600', cursor: addingMeeting ? 'wait' : 'pointer',
-                      opacity: addingMeeting ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: '0.5rem'
+                      opacity: addingMeeting ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: '0.5rem',
+                      boxShadow: '0 4px 14px rgba(59, 130, 246, 0.35)'
                     }}
                   >
                     {addingMeeting ? <Loader2 className="animate-spin" size={16} /> : 'Add to Project & Sync Memory'}

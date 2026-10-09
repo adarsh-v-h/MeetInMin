@@ -22,6 +22,10 @@ async def lifespan(app: FastAPI):
     
     logger = logging.getLogger(__name__)
 
+    # Ensure local upload directories exist on startup for developer convenience
+    os.makedirs("uploaded_audio", exist_ok=True)
+    os.makedirs("uploaded_project_docs", exist_ok=True)
+
     # Re-queue any meetings that got interrupted or stuck during server shutdown
     db = SessionLocal()
     try:
