@@ -174,6 +174,8 @@ class ProjectDocument(Base):
     storage_path = Column(String(1024), nullable=False)
     file_size = Column(Integer, nullable=True)
     processing_status = Column(String(50), default="uploaded") # uploaded, processing, ready, failed
+    extracted_text = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
     
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
 

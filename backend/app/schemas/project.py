@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, field_serializer
 from typing import List, Optional
 from datetime import datetime, timezone
+# pyrefly: ignore [missing-import]
 from app.schemas.meeting import MeetingSummaryResponse
 
 class ProjectCreate(BaseModel):
@@ -109,6 +110,27 @@ class ProjectSummaryResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class ProjectDocumentResponse(BaseModel):
+    id: str
+    project_id: str
+    filename: str
+    mime_type: Optional[str] = None
+    file_size: Optional[int] = None
+    processing_status: str
+    error_message: Optional[str] = None
+    uploaded_at: Optional[datetime] = None
+
+    @field_serializer('uploaded_at')
+    def serialize_uploaded_at(self, dt: Optional[datetime], _info) -> Optional[str]:
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat()
+
+    class Config:
+        from_attributes = True
+
 class ProjectDetailResponse(BaseModel):
     id: str
     name: str
@@ -122,6 +144,7 @@ class ProjectDetailResponse(BaseModel):
     actions: List[ProjectActionResponse] = []
     questions: List[ProjectQuestionResponse] = []
     meetings: List[MeetingSummaryResponse] = []
+    documents: List[ProjectDocumentResponse] = []
 
     @field_serializer('created_at', 'updated_at')
     def serialize_datetime(self, dt: Optional[datetime], _info) -> Optional[str]:

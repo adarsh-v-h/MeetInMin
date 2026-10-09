@@ -1,11 +1,15 @@
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, UploadFile, File, BackgroundTasks
+from fastapi.responses import FileResponse
 from sqlalchemy import select, func
 from sqlalchemy.orm import joinedload
 from typing import List, Optional
 from datetime import datetime, timezone
+import os
+import uuid
+import aiofiles
 
 from app.api.deps import DbSession, CurrentUser
-from app.db.models import Project, ProjectMemory, ProjectDecision, ProjectAction, ProjectQuestion, Meeting
+from app.db.models import Project, ProjectMemory, ProjectDecision, ProjectAction, ProjectQuestion, ProjectDocument, Meeting
 from app.schemas.project import (
     ProjectCreate,
     ProjectUpdate,
@@ -15,8 +19,10 @@ from app.schemas.project import (
     ProjectDecisionResponse,
     ProjectActionResponse,
     ProjectQuestionResponse,
+    ProjectDocumentResponse,
 )
 from app.schemas.meeting import MeetingSummaryResponse
+from app.services.project.doc_memory_engine import process_project_document
 
 router = APIRouter()
 
@@ -119,6 +125,7 @@ async def get_project_details(
             joinedload(Project.decisions),
             joinedload(Project.actions),
             joinedload(Project.questions),
+            joinedload(Project.documents),
             joinedload(Project.meetings).joinedload(Meeting.api_key),
         ).where(Project.id == project_id, Project.user_id == current_user.id)
     ).unique().scalar_one_or_none()
@@ -184,6 +191,19 @@ async def get_project_details(
         ) for q in project.questions
     ]
 
+    documents_resp = [
+        ProjectDocumentResponse(
+            id=doc.id,
+            project_id=doc.project_id,
+            filename=doc.filename,
+            mime_type=doc.mime_type,
+            file_size=doc.file_size,
+            processing_status=doc.processing_status,
+            error_message=doc.error_message,
+            uploaded_at=doc.uploaded_at,
+        ) for doc in sorted(project.documents, key=lambda x: x.uploaded_at, reverse=True)
+    ]
+
     return ProjectDetailResponse(
         id=project.id,
         name=project.name,
@@ -196,6 +216,7 @@ async def get_project_details(
         actions=actions_resp,
         questions=questions_resp,
         meetings=meeting_summaries,
+        documents=documents_resp,
     )
 
 
@@ -279,3 +300,128 @@ async def delete_project(
     db.commit()
 
     return {"status": "success", "message": f"Project '{project.name}' deleted. Associated meetings converted to standalone."}
+
+
+# Document Upload & Processing Endpoints
+UPLOAD_PROJECT_DOCS_DIR = "uploaded_project_docs"
+os.makedirs(UPLOAD_PROJECT_DOCS_DIR, exist_ok=True)
+ALLOWED_DOC_EXTENSIONS = {"pdf", "docx", "md", "txt"}
+MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024 # 15 MB
+
+@router.post("/{project_id}/documents", response_model=ProjectDocumentResponse, status_code=status.HTTP_201_CREATED)
+async def upload_project_document(
+    project_id: str,
+    current_user: CurrentUser,
+    db: DbSession,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...)
+):
+    project = db.execute(
+        select(Project).where(Project.id == project_id, Project.user_id == current_user.id)
+    ).scalar_one_or_none()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    ext = file.filename.split(".")[-1].lower() if "." in file.filename else ""
+    if ext not in ALLOWED_DOC_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file format '.{ext}'. Allowed formats: .pdf, .docx, .md, .txt"
+        )
+
+    # Collision-free filename: <username>_<clean_project_name>_<doc_uuid>_<original_filename>.<ext>
+    doc_uuid = str(uuid.uuid4())
+    clean_username = "".join([c for c in current_user.username if c.isalnum()]) or "user"
+    clean_projname = "".join([c for c in project.name if c.isalnum()]) or "proj"
+    clean_orig_name = "".join([c if c.isalnum() or c in "._-" else "_" for c in file.filename])
+    unique_filename = f"{clean_username}_{clean_projname}_{doc_uuid[:8]}_{clean_orig_name}"
+    storage_path = os.path.join(UPLOAD_PROJECT_DOCS_DIR, unique_filename)
+
+    file_size = 0
+    async with aiofiles.open(storage_path, "wb") as out_file:
+        while chunk := await file.read(1024 * 1024):
+            file_size += len(chunk)
+            if file_size > MAX_FILE_SIZE_BYTES:
+                out_file.close()
+                if os.path.exists(storage_path):
+                    os.remove(storage_path)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="File size exceeds the 15 MB limit."
+                )
+            await out_file.write(chunk)
+
+    now_utc = datetime.now(timezone.utc)
+    new_doc = ProjectDocument(
+        id=doc_uuid,
+        project_id=project.id,
+        filename=file.filename,
+        mime_type=file.content_type,
+        storage_path=storage_path,
+        file_size=file_size,
+        processing_status="uploaded",
+        uploaded_at=now_utc,
+    )
+    db.add(new_doc)
+    db.commit()
+    db.refresh(new_doc)
+
+    # Trigger background AI memory synthesis for document
+    background_tasks.add_task(process_project_document, new_doc.id, db)
+
+    return ProjectDocumentResponse.model_validate(new_doc)
+
+
+@router.get("/{project_id}/documents", response_model=List[ProjectDocumentResponse])
+async def list_project_documents(
+    project_id: str,
+    current_user: CurrentUser,
+    db: DbSession
+):
+    project = db.execute(
+        select(Project).where(Project.id == project_id, Project.user_id == current_user.id)
+    ).scalar_one_or_none()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    docs = db.execute(
+        select(ProjectDocument)
+        .where(ProjectDocument.project_id == project_id)
+        .order_by(ProjectDocument.uploaded_at.desc())
+    ).scalars().all()
+
+    return [ProjectDocumentResponse.model_validate(d) for d in docs]
+
+
+@router.get("/{project_id}/documents/{doc_id}/download", response_class=FileResponse)
+async def download_project_document(
+    project_id: str,
+    doc_id: str,
+    current_user: CurrentUser,
+    db: DbSession
+):
+    project = db.execute(
+        select(Project).where(Project.id == project_id, Project.user_id == current_user.id)
+    ).scalar_one_or_none()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    doc = db.execute(
+        select(ProjectDocument).where(ProjectDocument.id == doc_id, ProjectDocument.project_id == project_id)
+    ).scalar_one_or_none()
+
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if not doc.storage_path or not os.path.exists(doc.storage_path):
+        raise HTTPException(status_code=404, detail="Original document file missing from disk.")
+
+    return FileResponse(
+        path=doc.storage_path,
+        filename=doc.filename,
+        media_type=doc.mime_type or "application/octet-stream"
+    )
+

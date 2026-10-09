@@ -6,3 +6,7 @@ __pycache__/
 *.db
 *.sqlite3
 *.sqlite
+uploaded_audio/
+uploaded_project_docs/
+backend/uploaded_audio/
+backend/uploaded_project_docs/

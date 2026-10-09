@@ -25,6 +25,8 @@ def run_auto_migrations(db_engine):
         ('key_decisions', 'confidence_score', 'FLOAT DEFAULT 0.5'),
         ('key_decisions', 'confidence_reason', 'TEXT'),
         ('meetings', 'project_id', 'VARCHAR(36)'),
+        ('project_documents', 'extracted_text', 'TEXT'),
+        ('project_documents', 'error_message', 'TEXT'),
     ]
     with db_engine.connect() as conn:
         for table, col, col_type in columns_to_add:
