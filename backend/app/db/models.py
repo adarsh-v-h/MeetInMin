@@ -69,6 +69,8 @@ class Project(Base):
     actions = relationship("ProjectAction", back_populates="project", cascade="all, delete-orphan")
     questions = relationship("ProjectQuestion", back_populates="project", cascade="all, delete-orphan")
     documents = relationship("ProjectDocument", back_populates="project", cascade="all, delete-orphan")
+    team_members = relationship("ProjectTeamMember", back_populates="project", cascade="all, delete-orphan")
+
 
 
 class Meeting(Base):
@@ -180,6 +182,24 @@ class ProjectDocument(Base):
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
 
     project = relationship("Project", back_populates="documents")
+
+
+class ProjectTeamMember(Base):
+    __tablename__ = "project_team_members"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+
+    name = Column(String(255), nullable=False)
+    role = Column(String(255), nullable=True)
+    email = Column(String(255), nullable=True)
+    current_focus = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    project = relationship("Project", back_populates="team_members")
+
 
 
 class Transcript(Base):

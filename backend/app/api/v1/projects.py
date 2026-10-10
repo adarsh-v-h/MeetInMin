@@ -9,7 +9,7 @@ import uuid
 import aiofiles
 
 from app.api.deps import DbSession, CurrentUser
-from app.db.models import Project, ProjectMemory, ProjectDecision, ProjectAction, ProjectQuestion, ProjectDocument, Meeting
+from app.db.models import Project, ProjectMemory, ProjectDecision, ProjectAction, ProjectQuestion, ProjectDocument, ProjectTeamMember, Meeting
 from app.schemas.project import (
     ProjectCreate,
     ProjectUpdate,
@@ -20,7 +20,10 @@ from app.schemas.project import (
     ProjectActionResponse,
     ProjectQuestionResponse,
     ProjectDocumentResponse,
+    ProjectTeamMemberCreate,
+    ProjectTeamMemberResponse,
 )
+
 from app.schemas.meeting import MeetingSummaryResponse
 from app.services.project.doc_memory_engine import process_project_document
 
@@ -126,6 +129,7 @@ async def get_project_details(
             joinedload(Project.actions),
             joinedload(Project.questions),
             joinedload(Project.documents),
+            joinedload(Project.team_members),
             joinedload(Project.meetings).joinedload(Meeting.api_key),
         ).where(Project.id == project_id, Project.user_id == current_user.id)
     ).unique().scalar_one_or_none()
@@ -204,6 +208,19 @@ async def get_project_details(
         ) for doc in sorted(project.documents, key=lambda x: x.uploaded_at, reverse=True)
     ]
 
+    team_members_resp = [
+        ProjectTeamMemberResponse(
+            id=tm.id,
+            project_id=tm.project_id,
+            name=tm.name,
+            role=tm.role,
+            email=tm.email,
+            current_focus=tm.current_focus,
+            created_at=tm.created_at,
+            updated_at=tm.updated_at,
+        ) for tm in sorted(project.team_members, key=lambda x: x.name)
+    ]
+
     return ProjectDetailResponse(
         id=project.id,
         name=project.name,
@@ -217,7 +234,9 @@ async def get_project_details(
         questions=questions_resp,
         meetings=meeting_summaries,
         documents=documents_resp,
+        team_members=team_members_resp,
     )
+
 
 
 @router.patch("/{project_id}", response_model=ProjectSummaryResponse)
@@ -424,4 +443,68 @@ async def download_project_document(
         filename=doc.filename,
         media_type=doc.mime_type or "application/octet-stream"
     )
+
+
+@router.post("/{project_id}/team", response_model=ProjectTeamMemberResponse)
+async def add_or_update_team_member(
+    project_id: str,
+    payload: ProjectTeamMemberCreate,
+    current_user: CurrentUser,
+    db: DbSession
+):
+    project = db.execute(
+        select(Project).where(Project.id == project_id, Project.user_id == current_user.id)
+    ).scalar_one_or_none()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    from app.services.project.team_service import upsert_team_members
+    upsert_team_members(
+        project_id=project_id,
+        team_members_data=[payload.model_dump()],
+        db=db
+    )
+    db.commit()
+
+    # Query back the saved record
+    clean_name = payload.name.strip()
+    member = db.execute(
+        select(ProjectTeamMember).where(
+            ProjectTeamMember.project_id == project_id,
+            func.lower(ProjectTeamMember.name) == clean_name.lower()
+        )
+    ).scalars().first()
+
+    return ProjectTeamMemberResponse.model_validate(member)
+
+
+@router.delete("/{project_id}/team/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_team_member(
+    project_id: str,
+    member_id: int,
+    current_user: CurrentUser,
+    db: DbSession
+):
+    project = db.execute(
+        select(Project).where(Project.id == project_id, Project.user_id == current_user.id)
+    ).scalar_one_or_none()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    member = db.execute(
+        select(ProjectTeamMember).where(
+            ProjectTeamMember.id == member_id,
+            ProjectTeamMember.project_id == project_id
+        )
+    ).scalar_one_or_none()
+
+    if not member:
+        raise HTTPException(status_code=404, detail="Team member not found")
+
+    db.delete(member)
+    db.commit()
+    return None
+
 

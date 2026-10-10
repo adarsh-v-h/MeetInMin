@@ -3,8 +3,9 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { 
   FolderKanban, ArrowLeft, Brain, CheckSquare, Lightbulb, HelpCircle, 
   Video, Calendar, Clock, User, ChevronRight, Loader2, RefreshCw, FileText, Plus, X, CheckCircle2,
-  UploadCloud, Download, Trash2, AlertTriangle, FileCheck, FileX
+  UploadCloud, Download, Trash2, AlertTriangle, FileCheck, FileX, Users, UserPlus, Mail
 } from 'lucide-react';
+
 
 const ProjectDetails = () => {
   const { projectId } = useParams();
@@ -26,6 +27,72 @@ const ProjectDetails = () => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [uploadError, setUploadError] = useState(null);
+
+  // Team Roster state
+  const [showAddTeamModal, setShowAddTeamModal] = useState(false);
+  const [teamName, setTeamName] = useState('');
+  const [teamRole, setTeamRole] = useState('');
+  const [teamEmail, setTeamEmail] = useState('');
+  const [teamFocus, setTeamFocus] = useState('');
+  const [addingTeamMember, setAddingTeamMember] = useState(false);
+  const [teamError, setTeamError] = useState(null);
+
+  const handleAddTeamMember = async (e) => {
+    e.preventDefault();
+    if (!teamName.trim()) return;
+
+    setAddingTeamMember(true);
+    setTeamError(null);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/v1/projects/${projectId}/team`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: teamName.trim(),
+          role: teamRole.trim() || null,
+          email: teamEmail.trim() || null,
+          current_focus: teamFocus.trim() || null
+        })
+      });
+
+      if (response.ok) {
+        setShowAddTeamModal(false);
+        setTeamName('');
+        setTeamRole('');
+        setTeamEmail('');
+        setTeamFocus('');
+        fetchProjectDetails(true);
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        setTeamError(errData.detail || 'Failed to add team member');
+      }
+    } catch (err) {
+      setTeamError(err.message);
+    } finally {
+      setAddingTeamMember(false);
+    }
+  };
+
+  const handleDeleteTeamMember = async (memberId) => {
+    if (!window.confirm("Are you sure you want to remove this team member from the project?")) return;
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/v1/projects/${projectId}/team/${memberId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        fetchProjectDetails(true);
+      }
+    } catch (err) {
+      console.error('Failed to delete team member:', err);
+    }
+  };
+
 
   const fetchProjectDetails = async (isBackground = false) => {
     if (!isBackground) setLoading(true);
@@ -237,6 +304,7 @@ const ProjectDetails = () => {
   const questions = project.questions || [];
   const meetings = project.meetings || [];
   const documents = project.documents || [];
+  const teamMembers = project.team_members || [];
 
   const formatFileSize = (bytes) => {
     if (!bytes || bytes === 0) return '0 B';
@@ -359,29 +427,33 @@ const ProjectDetails = () => {
 
         {/* Quick Stats Grid */}
         <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1.25rem',
+          display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '1rem',
           marginTop: '1.75rem', paddingTop: '1.5rem',
           borderTop: '1px solid rgba(255, 255, 255, 0.08)'
         }}>
           <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '0.85rem 1.1rem', borderRadius: '14px', border: '1px solid rgba(255, 255, 255, 0.04)' }}>
-            <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Meetings</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#60A5FA', marginTop: '0.2rem' }}>{meetings.length}</div>
+            <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Meetings</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#60A5FA', marginTop: '0.2rem' }}>{meetings.length}</div>
           </div>
           <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '0.85rem 1.1rem', borderRadius: '14px', border: '1px solid rgba(255, 255, 255, 0.04)' }}>
-            <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Documents</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#A7F3D0', marginTop: '0.2rem' }}>{documents.length}</div>
+            <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Documents</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#A7F3D0', marginTop: '0.2rem' }}>{documents.length}</div>
           </div>
           <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '0.85rem 1.1rem', borderRadius: '14px', border: '1px solid rgba(255, 255, 255, 0.04)' }}>
-            <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Active Decisions</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#F59E0B', marginTop: '0.2rem' }}>{decisions.length}</div>
+            <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Team Roster</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#C084FC', marginTop: '0.2rem' }}>{teamMembers.length}</div>
           </div>
           <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '0.85rem 1.1rem', borderRadius: '14px', border: '1px solid rgba(255, 255, 255, 0.04)' }}>
-            <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Action Items</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#10B981', marginTop: '0.2rem' }}>{actions.length}</div>
+            <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Decisions</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#F59E0B', marginTop: '0.2rem' }}>{decisions.length}</div>
           </div>
           <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '0.85rem 1.1rem', borderRadius: '14px', border: '1px solid rgba(255, 255, 255, 0.04)' }}>
-            <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Open Questions</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#EC4899', marginTop: '0.2rem' }}>{questions.length}</div>
+            <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Action Items</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#10B981', marginTop: '0.2rem' }}>{actions.length}</div>
+          </div>
+          <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '0.85rem 1.1rem', borderRadius: '14px', border: '1px solid rgba(255, 255, 255, 0.04)' }}>
+            <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Questions</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#EC4899', marginTop: '0.2rem' }}>{questions.length}</div>
           </div>
         </div>
       </div>
@@ -389,16 +461,18 @@ const ProjectDetails = () => {
       {/* Navigation Tabs */}
       <div style={{
         display: 'flex', gap: '0.4rem', borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-        marginBottom: '2rem', paddingBottom: '0.4rem'
+        marginBottom: '2rem', paddingBottom: '0.4rem', flexWrap: 'wrap'
       }}>
         {[
           { id: 'overview', label: 'Project State Memory', icon: <Brain size={18} /> },
+          { id: 'team', label: `Team & Roles (${teamMembers.length})`, icon: <Users size={18} /> },
           { id: 'documents', label: `Documents (${documents.length})`, icon: <FileText size={18} /> },
           { id: 'decisions', label: `Decisions (${decisions.length})`, icon: <Lightbulb size={18} /> },
           { id: 'actions', label: `Action Items (${actions.length})`, icon: <CheckSquare size={18} /> },
           { id: 'questions', label: `Questions (${questions.length})`, icon: <HelpCircle size={18} /> },
           { id: 'meetings', label: `Meetings (${meetings.length})`, icon: <Video size={18} /> },
         ].map((tab) => (
+
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
@@ -456,6 +530,207 @@ const ProjectDetails = () => {
               </p>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Tab Content: Team & Roles */}
+      {activeTab === 'team' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          {/* Header Bar */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: '600', color: '#fff', margin: 0 }}>
+                Project Team Roster & Roles ({teamMembers.length})
+              </h3>
+              <p style={{ fontSize: '0.85rem', color: 'rgba(255, 255, 255, 0.5)', margin: '0.3rem 0 0 0' }}>
+                Team roster is automatically extracted from meetings, uploaded documents, and email threads, or managed manually below.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setTeamError(null);
+                setShowAddTeamModal(true);
+              }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.45rem',
+                padding: '0.6rem 1.25rem',
+                background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
+                color: '#fff', border: 'none', borderRadius: '12px',
+                fontSize: '0.88rem', fontWeight: '600', cursor: 'pointer',
+                boxShadow: '0 4px 16px rgba(59, 130, 246, 0.35)',
+                transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = '0 6px 20px rgba(59, 130, 246, 0.45)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'none';
+                e.currentTarget.style.boxShadow = '0 4px 16px rgba(59, 130, 246, 0.35)';
+              }}
+            >
+              <UserPlus size={17} /> Add Team Member
+            </button>
+          </div>
+
+          {/* Member Card Grid */}
+          {teamMembers.length === 0 ? (
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.02)',
+              border: '1px dashed rgba(255, 255, 255, 0.12)',
+              borderRadius: '18px', padding: '3.5rem 2rem', textAlign: 'center',
+              backdropFilter: 'blur(8px)'
+            }}>
+              <div style={{ width: '56px', height: '56px', borderRadius: '16px', background: 'rgba(255, 255, 255, 0.04)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+                <Users size={28} style={{ color: 'rgba(255, 255, 255, 0.3)' }} />
+              </div>
+              <p style={{ color: 'rgba(255, 255, 255, 0.7)', margin: 0, fontSize: '1rem', fontWeight: '500' }}>
+                No team members associated with this project yet.
+              </p>
+              <p style={{ color: 'rgba(255, 255, 255, 0.45)', fontSize: '0.85rem', marginTop: '0.4rem' }}>
+                Upload project specs, process meetings, or click "Add Team Member" above to populate the roster.
+              </p>
+            </div>
+          ) : (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+              gap: '1.25rem'
+            }}>
+              {teamMembers.map((member) => (
+                <div
+                  key={member.id}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.025)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    borderRadius: '20px',
+                    padding: '1.4rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justify: 'space-between',
+                    gap: '1.1rem',
+                    transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                    backdropFilter: 'blur(12px)',
+                    position: 'relative'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.35)';
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.045)';
+                    e.currentTarget.style.boxShadow = '0 8px 30px -8px rgba(0, 0, 0, 0.4)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.025)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                >
+                  {/* Top Section: Avatar + Name + Role + Delete */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                        {/* Initial Avatar */}
+                        <div style={{
+                          width: '46px', height: '46px', borderRadius: '14px',
+                          background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.25) 0%, rgba(59, 130, 246, 0.15) 100%)',
+                          border: '1px solid rgba(99, 102, 241, 0.3)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: '#818CF8', fontSize: '1.1rem', fontWeight: '700', flexShrink: 0
+                        }}>
+                          {member.name ? member.name.charAt(0).toUpperCase() : 'U'}
+                        </div>
+                        <div>
+                          <h4 style={{ fontSize: '1.05rem', fontWeight: '600', color: '#fff', margin: 0, letterSpacing: '-0.01em' }}>
+                            {member.name}
+                          </h4>
+                          {member.role ? (
+                            <span style={{
+                              display: 'inline-block',
+                              background: 'rgba(59, 130, 246, 0.12)', color: '#60A5FA',
+                              border: '1px solid rgba(59, 130, 246, 0.2)',
+                              padding: '0.15rem 0.6rem', borderRadius: '8px',
+                              fontSize: '0.75rem', fontWeight: '600', marginTop: '0.35rem'
+                            }}>
+                              {member.role}
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', fontStyle: 'italic' }}>
+                              Role unspecified
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Delete Action Button */}
+                      <button
+                        onClick={() => handleDeleteTeamMember(member.id)}
+                        title="Remove Team Member"
+                        style={{
+                          background: 'rgba(239, 68, 68, 0.08)',
+                          border: '1px solid rgba(239, 68, 68, 0.2)',
+                          color: '#F87171',
+                          borderRadius: '10px',
+                          padding: '0.45rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)';
+                        }}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+
+                    {/* Email Display */}
+                    {member.email && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.85rem', color: 'rgba(255, 255, 255, 0.65)', fontSize: '0.85rem' }}>
+                        <Mail size={14} style={{ color: '#60A5FA', flexShrink: 0 }} />
+                        <a href={`mailto:${member.email}`} style={{ color: 'rgba(255, 255, 255, 0.75)', textDecoration: 'none', transition: 'color 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.color = '#60A5FA'} onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(255, 255, 255, 0.75)'}>
+                          {member.email}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Current Focus Callout Box */}
+                  {member.current_focus ? (
+                    <div style={{
+                      background: 'rgba(0, 0, 0, 0.25)',
+                      border: '1px solid rgba(255, 255, 255, 0.05)',
+                      borderRadius: '12px',
+                      padding: '0.85rem 1rem',
+                      fontSize: '0.85rem',
+                      color: 'rgba(255, 255, 255, 0.8)',
+                      lineHeight: '1.5'
+                    }}>
+                      <div style={{ fontSize: '0.72rem', color: 'rgba(255, 255, 255, 0.45)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '0.3rem' }}>
+                        Active Focus / Assigned Work
+                      </div>
+                      {member.current_focus}
+                    </div>
+                  ) : (
+                    <div style={{
+                      background: 'rgba(255, 255, 255, 0.015)',
+                      border: '1px dashed rgba(255, 255, 255, 0.05)',
+                      borderRadius: '12px',
+                      padding: '0.7rem 1rem',
+                      fontSize: '0.8rem',
+                      color: 'rgba(255, 255, 255, 0.35)',
+                      fontStyle: 'italic'
+                    }}>
+                      No specific focus recorded yet.
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1057,6 +1332,138 @@ const ProjectDetails = () => {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Add Team Member Modal */}
+      {showAddTeamModal && (
+        <div style={{
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(12px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, padding: '1rem'
+        }}>
+          <div style={{
+            background: 'rgba(18, 18, 22, 0.95)', border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: '24px', padding: '2.25rem', width: '100%', maxWidth: '520px',
+            boxShadow: '0 24px 60px -12px rgba(0,0,0,0.7)', display: 'flex', flexDirection: 'column', gap: '1.5rem',
+            backdropFilter: 'blur(20px)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontSize: '1.35rem', fontWeight: '700', margin: 0, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <UserPlus size={22} style={{ color: '#3B82F6' }} /> Add Project Team Member
+              </h2>
+              <button
+                onClick={() => setShowAddTeamModal(false)}
+                style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', padding: '6px', borderRadius: '10px' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddTeamMember} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)', marginBottom: '0.4rem', fontWeight: '500' }}>
+                  Full Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Sarah Connor"
+                  value={teamName}
+                  onChange={(e) => setTeamName(e.target.value)}
+                  style={{
+                    width: '100%', padding: '0.8rem 1rem', background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid rgba(255,255,255,0.15)', borderRadius: '12px', color: '#fff',
+                    fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)', marginBottom: '0.4rem', fontWeight: '500' }}>
+                  Role / Designation (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Lead Backend Engineer / Product Manager"
+                  value={teamRole}
+                  onChange={(e) => setTeamRole(e.target.value)}
+                  style={{
+                    width: '100%', padding: '0.8rem 1rem', background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid rgba(255,255,255,0.15)', borderRadius: '12px', color: '#fff',
+                    fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)', marginBottom: '0.4rem', fontWeight: '500' }}>
+                  Email Address (Optional)
+                </label>
+                <input
+                  type="email"
+                  placeholder="e.g. sarah@company.com"
+                  value={teamEmail}
+                  onChange={(e) => setTeamEmail(e.target.value)}
+                  style={{
+                    width: '100%', padding: '0.8rem 1rem', background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid rgba(255,255,255,0.15)', borderRadius: '12px', color: '#fff',
+                    fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)', marginBottom: '0.4rem', fontWeight: '500' }}>
+                  Current Focus / Assigned Responsibilities (Optional)
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="e.g. Managing auth pipeline migration, handling Zoho API integration"
+                  value={teamFocus}
+                  onChange={(e) => setTeamFocus(e.target.value)}
+                  style={{
+                    width: '100%', padding: '0.8rem 1rem', background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid rgba(255,255,255,0.15)', borderRadius: '12px', color: '#fff',
+                    fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box', resize: 'vertical'
+                  }}
+                />
+              </div>
+
+              {teamError && (
+                <div style={{ color: '#ef4444', fontSize: '0.85rem', background: 'rgba(239,68,68,0.1)', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid rgba(239,68,68,0.2)' }}>
+                  {teamError}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowAddTeamModal(false)}
+                  style={{
+                    padding: '0.65rem 1.25rem', borderRadius: '12px', background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.8)', fontWeight: '500', cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={addingTeamMember || !teamName.trim()}
+                  style={{
+                    padding: '0.65rem 1.5rem', borderRadius: '12px',
+                    background: 'linear-gradient(135deg, #3B82F6, #2563EB)',
+                    border: 'none', color: '#fff', fontWeight: '600', cursor: (addingTeamMember || !teamName.trim()) ? 'not-allowed' : 'pointer',
+                    opacity: (addingTeamMember || !teamName.trim()) ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '0.5rem',
+                    boxShadow: '0 4px 14px rgba(59, 130, 246, 0.35)'
+                  }}
+                >
+                  {addingTeamMember ? <Loader2 className="animate-spin" size={16} /> : 'Add Team Member'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

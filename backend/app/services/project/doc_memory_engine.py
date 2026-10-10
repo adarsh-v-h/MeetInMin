@@ -11,6 +11,8 @@ from app.db.models import (
 from app.services.zoho.auth import get_access_token, invalidate_token
 from app.services.project.context_builder import build_project_context
 from app.services.project.doc_parser import extract_text_from_file
+from app.services.project.team_service import upsert_team_members
+
 
 logger = logging.getLogger(__name__)
 
@@ -78,14 +80,23 @@ Return ONLY a valid, raw JSON object with the following structure:
       "question": "Unresolved risk or question raised in document",
       "status": "open"
     }
+  ],
+  "team_members": [
+    {
+      "name": "Full Name of person mentioned in document",
+      "role": "Role or title mentioned (or null)",
+      "email": "Email address mentioned (or null)",
+      "current_focus": "Task, module, or focus assigned to them"
+    }
   ]
 }
 
 CRITICAL RULES:
 1. Synthesize the updated_current_state thoroughly so future meetings understand project specifications and context.
-2. Extract all key project decisions and action items mentioned in the document.
+2. Extract all key project decisions, action items, AND team members mentioned in the document.
 3. Do NOT wrap output in markdown code blocks. Return ONLY raw JSON.
 """
+
 
     user_prompt = f"""EXISTING PROJECT CONTEXT:
 {project_context}
@@ -229,7 +240,12 @@ async def process_project_document(doc_id: str, db: Session) -> None:
                 status=q.get("status", "open")
             ))
 
+    # Step 6: Upsert extracted team members
+    new_team = delta.get("team_members", [])
+    upsert_team_members(project_id, new_team, db)
+
     doc.processing_status = "ready"
     doc.error_message = None
     db.commit()
     logger.info(f"✨ Successfully integrated document '{doc.filename}' into project memory!")
+

@@ -11,6 +11,8 @@ from app.db.models import (
 )
 from app.services.zoho.auth import get_access_token, invalidate_token
 from app.services.project.context_builder import build_project_context
+from app.services.project.team_service import upsert_team_members
+
 
 logger = logging.getLogger(__name__)
 
@@ -81,14 +83,23 @@ Return ONLY a valid, raw JSON object with the following structure:
       "question": "Unresolved question or risk identified in meeting",
       "status": "open"
     }
+  ],
+  "team_members": [
+    {
+      "name": "Full Name of person mentioned",
+      "role": "Role or title mentioned (or null)",
+      "email": "Email address if mentioned (or null)",
+      "current_focus": "What they are assigned to work on or currently doing"
+    }
   ]
 }
 
 CRITICAL RULES:
 1. Synthesize the updated_current_state thoroughly so future meetings understand project continuity.
-2. Extract all NEW project decisions and tasks created in this meeting.
+2. Extract all NEW project decisions, tasks, questions, AND any team members or roles mentioned in the meeting.
 3. Do NOT wrap output in markdown code blocks. Return ONLY raw JSON.
 """
+
 
     decisions_str = "\n".join([f"- {d}" for d in key_decisions]) if key_decisions else "None"
     actions_str = "\n".join([f"- {a.get('task', '')} (Assignee: {a.get('assignee', 'Unassigned')})" for a in action_items]) if action_items else "None"
@@ -239,5 +250,10 @@ async def process_project_memory_update(meeting_id: str, db: Session) -> None:
                 status=q.get("status", "open")
             ))
 
+    # 5. Upsert extracted Team Members
+    new_team = delta.get("team_members", [])
+    upsert_team_members(project_id, new_team, db)
+
     db.commit()
     logger.info(f"✨ Successfully updated Project Memory for project '{project.name}' ({project_id})!")
+

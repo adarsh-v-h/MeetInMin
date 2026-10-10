@@ -1,14 +1,14 @@
 import logging
 from sqlalchemy.orm import Session
 from sqlalchemy import select
-from app.db.models import Project, ProjectMemory, ProjectDecision, ProjectAction, ProjectQuestion, Meeting, MeetingInsight
+from app.db.models import Project, ProjectMemory, ProjectDecision, ProjectAction, ProjectQuestion, ProjectTeamMember, Meeting, MeetingInsight
 
 logger = logging.getLogger(__name__)
 
 def build_project_context(project_id: str, db: Session) -> str:
     """
     Assembles the structured project context string from Project Memory,
-    Active Decisions, Open Actions, Open Questions, and recent meeting summaries.
+    Active Decisions, Open Actions, Open Questions, Team Roster & Roles, and recent meeting summaries.
     This string is injected into GLM Stage 1 analysis prompt.
     """
     if not project_id:
@@ -31,6 +31,10 @@ def build_project_context(project_id: str, db: Session) -> str:
         select(ProjectQuestion).where(ProjectQuestion.project_id == project_id, ProjectQuestion.status == "open")
     ).scalars().all()
 
+    team_members = db.execute(
+        select(ProjectTeamMember).where(ProjectTeamMember.project_id == project_id)
+    ).scalars().all()
+
     recent_meetings = db.execute(
         select(Meeting)
         .where(Meeting.project_id == project_id, Meeting.status == "completed")
@@ -49,6 +53,14 @@ def build_project_context(project_id: str, db: Session) -> str:
     else:
         lines.append("No previous meeting state recorded yet. This is the first meeting or initialization phase for this project.")
 
+    if team_members:
+        lines.append("\n--- PROJECT TEAM ROSTER & ROLES ---")
+        for tm in team_members:
+            role_str = f" | Role: {tm.role}" if tm.role else ""
+            email_str = f" | Email: {tm.email}" if tm.email else ""
+            focus_str = f" | Focus: {tm.current_focus}" if tm.current_focus else ""
+            lines.append(f"- {tm.name}{role_str}{email_str}{focus_str}")
+
     if decisions:
         lines.append("\n--- ACTIVE KEY DECISIONS ---")
         for d in decisions:
@@ -64,6 +76,7 @@ def build_project_context(project_id: str, db: Session) -> str:
         lines.append("\n--- OPEN QUESTIONS / UNRESOLVED ISSUES ---")
         for q in open_questions:
             lines.append(f"- {q.question}")
+
 
     if recent_meetings:
         lines.append("\n--- RECENT COMPLETED MEETINGS SUMMARY ---")

@@ -131,6 +131,33 @@ class ProjectDocumentResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class ProjectTeamMemberCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255, description="Team member name")
+    role: Optional[str] = Field(default=None, max_length=255, description="Team member role or title")
+    email: Optional[str] = Field(default=None, max_length=255, description="Email address")
+    current_focus: Optional[str] = Field(default=None, description="Current tasks or focus area")
+
+class ProjectTeamMemberResponse(BaseModel):
+    id: int
+    project_id: str
+    name: str
+    role: Optional[str] = None
+    email: Optional[str] = None
+    current_focus: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    @field_serializer('created_at', 'updated_at')
+    def serialize_datetime(self, dt: Optional[datetime], _info) -> Optional[str]:
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat()
+
+    class Config:
+        from_attributes = True
+
 class ProjectDetailResponse(BaseModel):
     id: str
     name: str
@@ -145,6 +172,7 @@ class ProjectDetailResponse(BaseModel):
     questions: List[ProjectQuestionResponse] = []
     meetings: List[MeetingSummaryResponse] = []
     documents: List[ProjectDocumentResponse] = []
+    team_members: List[ProjectTeamMemberResponse] = []
 
     @field_serializer('created_at', 'updated_at')
     def serialize_datetime(self, dt: Optional[datetime], _info) -> Optional[str]:
@@ -156,3 +184,4 @@ class ProjectDetailResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
