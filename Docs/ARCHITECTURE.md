@@ -1,6 +1,6 @@
 # 🏗️ MeetInMin: System Architecture & Technical Specification
 
-This document provides a comprehensive technical architecture guide for **MeetInMin**, detailing system topography, data pipelines, subsystem implementations, AI confidence scoring, project state memory engines, document parsing, and complete database schemas.
+This document provides a comprehensive technical architecture guide for **MeetInMin**, detailing system topography, data pipelines, subsystem implementations, AI confidence scoring, project state memory engines, team roster intelligence, document parsing, and complete database schemas.
 
 ---
 
@@ -10,17 +10,16 @@ This document provides a comprehensive technical architecture guide for **MeetIn
 graph TB
     subgraph Client Layer
         EXT["Chrome Extension (MV3)<br/>• tabCapture & Offscreen Audio<br/>• IndexedDB Safety Chunks<br/>• Local WebM Download"]
-        SPA["React SPA (Vite)<br/>• Glassmorphic UI<br/>• Dashboard & Project Memory<br/>• Document Upload & List View<br/>• Completed Meeting Filter<br/>• Inline Title Rename<br/>• Confidence Badges & Tooltips"]
+        SPA["React SPA (Vite)<br/>• Glassmorphic UI<br/>• Dashboard & Project Memory<br/>• Document Upload & List View<br/>• Team Roster Cards & Add Modal<br/>• Completed Meeting Filter<br/>• Inline Title Rename<br/>• Confidence Badges & Tooltips"]
     end
 
     subgraph API Layer (FastAPI)
         AUTH["Auth Router<br/>JWT & Google OAuth 2.0"]
         MTG["Meetings Router<br/>Upload, Rename (PATCH), & Downloads"]
-        PROJ["Projects Router<br/>Create, List, Memory Sync, & Document Uploads"]
+        PROJ["Projects Router<br/>Create, List, Memory Sync, Docs, & Team Management"]
         EMAIL["Emails Router<br/>Pending Replies, AI Draft & Send"]
         QUEUE["Async Queue Runner<br/>audio_queue & Background Tasks"]
     end
-
 
     subgraph Storage Layer
         DB[(SQLite / PostgreSQL<br/>SQLAlchemy 2.0 ORM + Startup Auto-Migrations)]
@@ -32,11 +31,12 @@ graph TB
         STT["Zoho Zia Speech-to-Text<br/>16kHz Mono WAV Chunks"]
         GLM["Zoho GLM (47B/30B IT)<br/>Structured Insights, Confidence Scores,<br/>Smart Titles & Project Memory Synthesis"]
         PARSER["Doc Text Extractor<br/>pypdf & python-docx Parser"]
+        TEAM_ENGINE["Team Roster Smart Upsert Engine<br/>app/services/project/team_service.py"]
         GMAIL["Gmail API (OAuth 2.0)<br/>Read-only Mailbox Context"]
     end
 
     EXT -->|Upload WebM + API Key| MTG
-    SPA -->|REST API + Bearer JWT| AUTH & MTG & PROJ
+    SPA -->|REST API + Bearer JWT| AUTH & MTG & PROJ & EMAIL
     MTG --> DISK_AUDIO
     PROJ --> DISK_DOCS
     MTG --> QUEUE
@@ -45,6 +45,7 @@ graph TB
     QUEUE --> GMAIL
     QUEUE --> PARSER
     QUEUE --> GLM
+    QUEUE --> TEAM_ENGINE
     QUEUE --> DB
     AUTH --> DB
 ```
@@ -61,8 +62,9 @@ graph TB
 | **Audio Processing** | `pydub` + `ffmpeg` | Audio conversion to 16kHz mono WAV & 4-min chunk splitting |
 | **Document Processing** | `pypdf` + `python-docx` | Text extraction from PDF, DOCX, MD, and TXT files |
 | **STT Engine** | Zoho Zia Speech-to-Text (`/quickml/.../transcribe`) | High-accuracy Speech-to-Text API |
-| **LLM Engine** | Zoho GLM (`crm-di-glm47b_30b_it`) | Meeting insights, itemized confidence scoring, and project state memory synthesis |
-| **Mailbox Intelligence**| Gmail REST API (OAuth 2.0 `gmail.readonly`) | Pre-meeting context enrichment from user emails |
+| **LLM Engine** | Zoho GLM (`crm-di-glm47b_30b_it`) | Meeting insights, itemized confidence scoring, team roster extraction, and project state memory synthesis |
+| **Team Roster Engine** | `upsert_team_members` (`team_service.py`) | Smart deduplication & active focus/role tracking for project team members |
+| **Mailbox Intelligence**| Gmail REST API (OAuth 2.0 `gmail.readonly`) | Pre-meeting context enrichment and inbox email reply drafting |
 | **Frontend Framework**| React 18 + Vite | Modern single-page web dashboard with glassmorphism UI |
 | **Browser Extension** | Chrome Extension Manifest V3 | Silent tab audio recording using Offscreen Documents |
 
@@ -103,7 +105,7 @@ sequenceDiagram
 
     Queue->>DB: Update status -> analyzing
     Queue->>GLM: Analyze Transcript + Email Context
-    GLM-->>Queue: Return Structured JSON (Smart Title, Summary, Decisions, Action Items with Confidence Scores)
+    GLM-->>Queue: Return Structured JSON (Smart Title, Summary, Decisions, Action Items with Confidence Scores, Team Roster)
     Queue->>DB: Update Meeting Title & Persist Insights
     Queue->>DB: Update status -> completed
 ```
@@ -121,6 +123,7 @@ sequenceDiagram
     participant FS as Local Storage (uploaded_project_docs)
     participant Parser as Doc Parser (pypdf/docx)
     participant GLM as Zoho GLM API
+    participant Team as Team Service (upsert_team_members)
     participant DB as Database
 
     User->>FE: Uploads Document (.pdf/.docx/.md/.txt) in Project
@@ -135,9 +138,10 @@ sequenceDiagram
     Parser->>Parser: Extract plain text
     Parser->>DB: Save doc.extracted_text preview
 
-    Parser->>DB: Fetch current ProjectMemory & active decisions
+    Parser->>DB: Fetch current ProjectMemory & active decisions & team roster
     Parser->>GLM: Call Zoho GLM (Current Memory + Document Text)
-    GLM-->>Parser: Return updated state, new decisions, action items, questions
+    GLM-->>Parser: Return updated state, new decisions, action items, questions, team_members
+    Parser->>Team: Smart upsert extracted team_members
     Parser->>DB: Update ProjectMemory.current_state & persist items
     Parser->>DB: Update doc.status -> ready
 ```
@@ -146,7 +150,14 @@ sequenceDiagram
 
 ## 🔬 Subsystem Architecture Deep Dives
 
-### 1. Chrome Extension (`MeetInMinExe`) Architecture
+### 1. Project Team Roster & Role Intelligence (`app/services/project/team_service.py`)
+- **Smart Deduplication Engine**: Performs case-insensitive matching by email address or full name to prevent duplicate entries when re-processing documents or meetings.
+- **Dynamic Field Updates**: Merges newly detected roles and appends/refines active focus statements (`current_focus`).
+- **Context Integration**: `build_project_context(project_id, db)` embeds team members into prompt contexts under `--- PROJECT TEAM ROSTER & ROLES ---`, equipping Zoho GLM with roster awareness during email reply generation and meeting analysis.
+
+---
+
+### 2. Chrome Extension (`MeetInMinExe`) Architecture
 * **Manifest V3 Service Worker** (`background.js`): Manages recording state, session persistence, alarms, and handles file upload to the backend.
 * **Offscreen Document API** (`offscreen.js`): Bypasses Chrome Service Worker audio limitations by maintaining an offscreen HTML document that captures tab audio via `chrome.tabCapture.getMediaStreamId()`.
 * **IndexedDB Timeslice Safety**: Audio chunks are recorded in 2-second timeslices and saved continuously into IndexedDB (`CHUNKS_STORE`). If the browser closes unexpectedly, un-saved audio chunks are recovered.
@@ -154,7 +165,7 @@ sequenceDiagram
 
 ---
 
-### 2. Audio Chunker & Zoho Zia STT Service (`app/services/zoho/stt.py`)
+### 3. Audio Chunker & Zoho Zia STT Service (`app/services/zoho/stt.py`)
 Zoho Zia STT imposes strict file size and duration thresholds (`FILE_SIZE_MORE_THAN_ALLOWED_SIZE`). MeetInMin solves this through an automated audio splitting pipeline:
 1. **Audio Inspection**: `pydub.AudioSegment` calculates total audio duration.
 2. **Dynamic Splitting**: Audio exceeding 4 minutes (240,000 ms) is split into 4-minute segment slices.
@@ -164,7 +175,7 @@ Zoho Zia STT imposes strict file size and duration thresholds (`FILE_SIZE_MORE_T
 
 ---
 
-### 3. Project Document Text Extractor (`app/services/project/doc_parser.py`)
+### 4. Project Document Text Extractor (`app/services/project/doc_parser.py`)
 Parses uploaded project files into plain text:
 - **`.txt` & `.md`**: Direct UTF-8 / Latin-1 text decode.
 - **`.pdf`**: Extracted via `pypdf.PdfReader` iterating across pages. If a PDF is encrypted or image-only without text layers, it returns a clear `DocumentParsingError`.
@@ -173,28 +184,27 @@ Parses uploaded project files into plain text:
 
 ---
 
-### 4. Project State Memory Engine (`app/services/project/memory_engine.py` & `doc_memory_engine.py`)
+### 5. Project State Memory Engine (`app/services/project/memory_engine.py` & `doc_memory_engine.py`)
 Project state memory evolves incrementally without re-processing past meeting transcripts:
-1. **Context Building**: `build_project_context(project_id, db)` compiles current `ProjectMemory.current_state`, active decisions, action items, and open questions.
+1. **Context Building**: `build_project_context(project_id, db)` compiles current `ProjectMemory.current_state`, team roster, active decisions, action items, and open questions.
 2. **Zoho GLM Synthesis**: The current context + new input (either a completed meeting transcript or an uploaded document text) is sent to Zoho GLM.
-3. **Incremental Update**: The engine updates `ProjectMemory.current_state` with a synthesized 2-4 paragraph status and appends newly extracted decisions, action items, and unresolved questions.
+3. **Incremental Update**: The engine updates `ProjectMemory.current_state` with a synthesized 2-4 paragraph status, upserts team roster changes, and appends newly extracted decisions, action items, and unresolved questions.
 
 ---
 
-### 5. Meeting Assignment & Completed Status Enforcement (`PATCH /v1/meetings/{id}`)
+### 6. Meeting Assignment & Completed Status Enforcement (`PATCH /v1/meetings/{id}`)
 - Only meetings with `status == 'completed'` can be assigned to projects.
-- When assigned, `process_meeting_added_to_project` background task automatically executes to merge meeting summary, key decisions, and action items into project memory.
+- When assigned, `process_meeting_added_to_project` background task automatically executes to merge meeting summary, team members, key decisions, and action items into project memory.
 - The standalone completed meetings endpoint (`GET /v1/meetings?project_id=standalone&status=completed`) powers the frontend modal filter.
 
 ---
 
-### 6. Mailbox Intelligence & AI Email Replies Subsystem (Phase 1)
+### 7. Mailbox Intelligence & AI Email Replies Subsystem (Phase 1)
 - **Inbox Classification**: `GET /v1/emails/pending-replies` retrieves user inbox emails using short-lived Google access tokens and passes email bodies + thread histories to Zoho GLM (`crm-di-glm47b_30b_it`). Categorizes messages into `NEEDS_REPLY`, `NO_REPLY_NEEDED`, or `UNCLEAR` with AI reasoning explanations.
-- **AI Draft Generation**: `POST /v1/emails/{message_id}/draft-reply` constructs non-hallucinatory contextual drafts matching email threads and optional user instructions.
+- **AI Draft Generation**: `POST /v1/emails/{message_id}/draft-reply` constructs non-hallucinatory contextual drafts matching email threads, project team context, and optional user instructions.
 - **Review & Send**: `POST /v1/emails/send-reply` sends user-reviewed responses via Gmail API (`users.messages.send`) formatted as RFC 2822 messages with complete thread context headers (`In-Reply-To`, `References`, `threadId`).
 
 ---
-
 
 ## 🗄️ Database Schema & ER Diagram
 
@@ -209,6 +219,7 @@ erDiagram
     Project ||--o{ ProjectAction : has
     Project ||--o{ ProjectQuestion : has
     Project ||--o{ ProjectDocument : stores
+    Project ||--o{ ProjectTeamMember : includes
     Project ||--o{ Meeting : contains
 
     Meeting ||--o| Transcript : has
@@ -250,6 +261,17 @@ erDiagram
         string project_id FK
         text current_state
         text summary
+        datetime updated_at
+    }
+
+    ProjectTeamMember {
+        int id PK
+        string project_id FK
+        string name
+        string role
+        string email
+        text current_focus
+        datetime created_at
         datetime updated_at
     }
 

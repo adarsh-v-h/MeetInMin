@@ -9,6 +9,7 @@
 - **Zero-Bot Ingestion**: Captures high-fidelity tab & microphone audio via a lightweight Chrome extension (`MeetInMinExe`) — no meeting room bots required.
 - **Dual Ingestion Support**: Record live calls via the Chrome extension OR create meetings and upload pre-recorded audio files (`.webm`, `.mp3`, `.wav`, `.m4a`, `.mp4`) directly from the Web Dashboard.
 - **Project Document Uploads & Context Integration**: Upload technical specifications, project documentation, or architecture guides (`.pdf`, `.docx`, `.md`, `.txt` up to 15 MB) directly to projects. An AI Document Memory Engine automatically parses text and incrementally evolves the project's cumulative state memory.
+- **Project Team Roster & Role Intelligence**: Automatically extracts team members, roles, emails, and active focus across meetings, uploaded documents, and email threads with smart deduplication (`upsert_team_members`), formatting roster details into prompt context for GLM email drafting and memory updates.
 - **Incremental Project Memory Engine**: Assign standalone completed meetings or upload documents to projects. The system dynamically updates project state memory, active decisions, action items, and open questions using Zoho GLM.
 - **Completed Meetings Enforcement**: Strict status checks ensure only fully processed meetings (`status == 'completed'`) can be assigned to projects.
 - **Zoho AI Intelligence**: Powered by Zoho Catalyst Zia STT (with automatic 4-minute audio chunking) and Zoho GLM (`crm-di-glm47b_30b_it`).
