@@ -21,8 +21,10 @@ from app.services.gmail.client import (
     get_message_details,
     get_thread_details,
     search_gmail_messages,
+    search_gmail_threads,
     send_gmail_reply,
 )
+
 from app.services.email.classifier import classify_email_with_zoho_glm
 from app.services.email.drafter import generate_reply_draft_with_zoho_glm
 
@@ -52,6 +54,8 @@ async def list_pending_email_replies(
             detail="Google account not connected. Please connect Google in Settings."
         )
 
+    import httpx
+
     try:
         access_token = await get_gmail_access_token(
             current_user.google_refresh_token,
@@ -65,50 +69,67 @@ async def list_pending_email_replies(
             detail="Could not authenticate with Gmail. Please reconnect your Google account in Settings."
         )
 
-    try:
-        messages = await search_gmail_messages(
-            access_token,
-            query="label:INBOX",
-            max_results=limit
-        )
-    except GmailClientError as e:
-        logger.error(f"Gmail inbox search failed for user {current_user.id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to query Gmail inbox."
-        )
+    async with httpx.AsyncClient() as client:
+        # STEP 1: Fetch thread stubs from inbox in 1 API request
+        try:
+            threads = await search_gmail_threads(
+                access_token,
+                query="label:INBOX",
+                max_results=limit,
+                client=client
+            )
+        except GmailClientError as e:
+            logger.error(f"Gmail inbox thread search failed for user {current_user.id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Failed to query Gmail inbox threads."
+            )
 
-    if not messages:
-        return []
+        if not threads:
+            return []
 
-    # Fetch details for messages concurrently
-    tasks = [get_message_details(access_token, msg["id"]) for msg in messages]
-    raw_details = await asyncio.gather(*tasks, return_exceptions=True)
+        # Extract unique thread IDs
+        unique_thread_ids = [t["id"] for t in threads if isinstance(t, dict) and "id" in t]
 
-    valid_emails = []
-    for item in raw_details:
-        if isinstance(item, dict) and item.get("gmail_message_id"):
-            valid_emails.append(item)
+        # STEP 2: Fetch all full threads concurrently in parallel (no N+1 sequential loop)
+        thread_tasks = [get_thread_details(access_token, tid, client=client) for tid in unique_thread_ids]
+        raw_threads = await asyncio.gather(*thread_tasks, return_exceptions=True)
 
-    # Classify each email
+        valid_thread_items = []
+        for thread_msgs in raw_threads:
+            if isinstance(thread_msgs, list) and len(thread_msgs) > 0:
+                latest_email = thread_msgs[-1]
+                thread_history = thread_msgs[:-1]
+                valid_thread_items.append((latest_email, thread_history))
+
+        if not valid_thread_items:
+            return []
+
+        # STEP 3: Classify all retrieved emails concurrently in parallel with Zoho GLM
+        cls_tasks = [
+            classify_email_with_zoho_glm(email_details=latest_email, thread_messages=history, client=client)
+            for latest_email, history in valid_thread_items
+        ]
+        classification_results = await asyncio.gather(*cls_tasks, return_exceptions=True)
+
+    # Build structured response list
     classified_results = []
-    for email in valid_emails:
-        # Fetch thread history if thread_id is available
-        thread_messages = None
-        if email.get("thread_id"):
-            thread_messages = await get_thread_details(access_token, email["thread_id"])
+    for (latest_email, _), cls_res in zip(valid_thread_items, classification_results):
+        if not isinstance(cls_res, dict):
+            cls_res = {
+                "classification": EmailClassificationEnum.UNCLEAR,
+                "reasoning": "Could not complete classification."
+            }
 
-        cls_res = await classify_email_with_zoho_glm(email, thread_messages)
-        
         email_resp = PendingEmailResponse(
-            gmail_message_id=email["gmail_message_id"],
-            thread_id=email.get("thread_id", ""),
-            subject=email.get("subject", "(no subject)"),
-            sender=email.get("sender", "(unknown)"),
-            recipient=email.get("recipient", ""),
-            snippet=email.get("snippet", ""),
-            body_text=email.get("body_text", ""),
-            received_at=email.get("received_at"),
+            gmail_message_id=latest_email["gmail_message_id"],
+            thread_id=latest_email.get("thread_id", ""),
+            subject=latest_email.get("subject", "(no subject)"),
+            sender=latest_email.get("sender", "(unknown)"),
+            recipient=latest_email.get("recipient", ""),
+            snippet=latest_email.get("snippet", ""),
+            body_text=latest_email.get("body_text", ""),
+            received_at=latest_email.get("received_at"),
             classification=cls_res["classification"],
             reasoning=cls_res["reasoning"]
         )
@@ -117,6 +138,7 @@ async def list_pending_email_replies(
             classified_results.append(email_resp)
 
     return classified_results
+
 
 
 @router.post("/{message_id}/draft-reply", response_model=EmailDraftResponse)

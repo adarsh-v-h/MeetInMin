@@ -33,7 +33,8 @@ def _clean_json_text(text: str) -> str:
 
 async def classify_email_with_zoho_glm(
     email_details: dict,
-    thread_messages: Optional[list[dict]] = None
+    thread_messages: Optional[list[dict]] = None,
+    client: Optional[httpx.AsyncClient] = None,
 ) -> dict:
     """
     Classifies an email into NEEDS_REPLY, NO_REPLY_NEEDED, or UNCLEAR using Zoho GLM.
@@ -97,13 +98,22 @@ Body Text:
             "CATALYST-ORG": org_id,
             "Content-Type": "application/json",
         }
-        async with httpx.AsyncClient() as client:
+        if client:
             resp = await client.post(glm_url, headers=headers, json=payload, timeout=30.0)
             if resp.status_code == 401:
                 invalidate_token()
                 token = await get_access_token()
                 headers["Authorization"] = f"Zoho-oauthtoken {token}"
                 resp = await client.post(glm_url, headers=headers, json=payload, timeout=30.0)
+        else:
+            async with httpx.AsyncClient() as c:
+                resp = await c.post(glm_url, headers=headers, json=payload, timeout=30.0)
+                if resp.status_code == 401:
+                    invalidate_token()
+                    token = await get_access_token()
+                    headers["Authorization"] = f"Zoho-oauthtoken {token}"
+                    resp = await c.post(glm_url, headers=headers, json=payload, timeout=30.0)
+
 
         if resp.status_code == 200:
             data = resp.json()

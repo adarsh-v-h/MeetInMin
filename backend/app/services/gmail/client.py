@@ -69,30 +69,66 @@ async def search_gmail_messages(
     access_token: str,
     query: str,
     max_results: int = 10,
+    client: Optional[httpx.AsyncClient] = None,
     timeout: float = 15.0,
 ) -> list[dict]:
     """
     Search the user's Gmail inbox using the provided query string.
-    Returns a list of lightweight message dicts: {"id": "...", "threadId": "..."}.
-    Returns an empty list if no messages match — never raises on empty results.
+    Returns a list of lightweight message dicts: [{"id": "...", "threadId": "..."}, ...].
     """
     url = f"{_GMAIL_API_BASE}/messages"
     headers = {"Authorization": f"Bearer {access_token}"}
     params = {"q": query, "maxResults": max_results}
 
-    async with httpx.AsyncClient() as client:
+    if client:
         resp = await client.get(url, headers=headers, params=params, timeout=timeout)
+    else:
+        async with httpx.AsyncClient() as c:
+            resp = await c.get(url, headers=headers, params=params, timeout=timeout)
 
-        if resp.status_code == 401:
-            raise GmailClientError("Gmail search returned 401 — access token invalid or revoked.")
-        if resp.status_code != 200:
-            body = resp.text[:200] if resp.text else "<empty>"
-            raise GmailClientError(f"Gmail search failed (HTTP {resp.status_code}): {body}")
+    if resp.status_code == 401:
+        raise GmailClientError("Gmail search returned 401 — access token invalid or revoked.")
+    if resp.status_code != 200:
+        body = resp.text[:200] if resp.text else "<empty>"
+        raise GmailClientError(f"Gmail search failed (HTTP {resp.status_code}): {body}")
 
-        data = resp.json()
-        messages = data.get("messages", [])
-        logger.info(f"Gmail search returned {len(messages)} message(s) for query: {query[:80]}...")
-        return messages
+    data = resp.json()
+    messages = data.get("messages", [])
+    logger.info(f"Gmail search returned {len(messages)} message(s) for query: {query[:80]}...")
+    return messages
+
+
+async def search_gmail_threads(
+    access_token: str,
+    query: str,
+    max_results: int = 10,
+    client: Optional[httpx.AsyncClient] = None,
+    timeout: float = 15.0,
+) -> list[dict]:
+    """
+    Search the user's Gmail threads directly using the query string.
+    Returns a list of lightweight thread dicts: [{"id": "...", "snippet": "..."}, ...].
+    """
+    url = f"{_GMAIL_API_BASE}/threads"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    params = {"q": query, "maxResults": max_results}
+
+    if client:
+        resp = await client.get(url, headers=headers, params=params, timeout=timeout)
+    else:
+        async with httpx.AsyncClient() as c:
+            resp = await c.get(url, headers=headers, params=params, timeout=timeout)
+
+    if resp.status_code == 401:
+        raise GmailClientError("Gmail thread search returned 401 — access token invalid or revoked.")
+    if resp.status_code != 200:
+        body = resp.text[:200] if resp.text else "<empty>"
+        raise GmailClientError(f"Gmail thread search failed (HTTP {resp.status_code}): {body}")
+
+    data = resp.json()
+    threads = data.get("threads", [])
+    logger.info(f"Gmail thread search returned {len(threads)} thread(s) for query: {query[:80]}...")
+    return threads
 
 
 def _parse_message_data(data: dict) -> Optional[dict]:
@@ -145,6 +181,7 @@ def _parse_message_data(data: dict) -> Optional[dict]:
 async def get_message_details(
     access_token: str,
     message_id: str,
+    client: Optional[httpx.AsyncClient] = None,
     timeout: float = 10.0,
 ) -> Optional[dict]:
     """
@@ -156,8 +193,11 @@ async def get_message_details(
     params = {"format": "full"}
 
     try:
-        async with httpx.AsyncClient() as client:
+        if client:
             resp = await client.get(url, headers=headers, params=params, timeout=timeout)
+        else:
+            async with httpx.AsyncClient() as c:
+                resp = await c.get(url, headers=headers, params=params, timeout=timeout)
 
         if resp.status_code != 200:
             logger.warning(f"Could not fetch Gmail message {message_id} (HTTP {resp.status_code})")
@@ -173,6 +213,7 @@ async def get_message_details(
 async def get_thread_details(
     access_token: str,
     thread_id: str,
+    client: Optional[httpx.AsyncClient] = None,
     timeout: float = 15.0,
 ) -> Optional[list[dict]]:
     """
@@ -183,8 +224,11 @@ async def get_thread_details(
     params = {"format": "full"}
 
     try:
-        async with httpx.AsyncClient() as client:
+        if client:
             resp = await client.get(url, headers=headers, params=params, timeout=timeout)
+        else:
+            async with httpx.AsyncClient() as c:
+                resp = await c.get(url, headers=headers, params=params, timeout=timeout)
 
         if resp.status_code != 200:
             logger.warning(f"Could not fetch Gmail thread {thread_id} (HTTP {resp.status_code})")
@@ -201,6 +245,7 @@ async def get_thread_details(
     except Exception as e:
         logger.warning(f"Error fetching Gmail thread {thread_id}: {e}")
         return None
+
 
 
 async def send_gmail_reply(
